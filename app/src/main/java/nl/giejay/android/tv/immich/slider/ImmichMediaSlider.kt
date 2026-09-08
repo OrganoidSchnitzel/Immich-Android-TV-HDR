@@ -12,6 +12,7 @@ import androidx.navigation.fragment.findNavController
 import nl.giejay.android.tv.immich.R
 import nl.giejay.android.tv.immich.shared.prefs.API_KEY
 import nl.giejay.android.tv.immich.shared.prefs.PreferenceManager
+import nl.giejay.android.tv.immich.shared.util.HdrColorModeController
 import nl.giejay.mediaslider.plugin.TimelineStoryProgressPlugin
 import nl.giejay.mediaslider.view.MediaSliderFragment
 import nl.giejay.mediaslider.view.MediaSliderView
@@ -19,6 +20,7 @@ import timber.log.Timber
 
 class ImmichMediaSlider : MediaSliderFragment() {
     private val favoriteService = FavoriteService()
+    private val hdrColorMode = HdrColorModeController { activity?.window }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -60,11 +62,19 @@ class ImmichMediaSlider : MediaSliderFragment() {
         config.viewPlugins += enabledPlugins.viewPlugins
         config.keyEventPlugins += enabledPlugins.keyEventPlugins
 
+        config.onImageHdrDetected = { hasGainmap -> hdrColorMode.onHdrDetected(hasGainmap) }
+
         loadMediaSliderView(config)
 
         if (bundle.timelineView) {
             // Memories: timeline plugin mounts story progress; start autoplay.
             (view as MediaSliderView).toggleSlideshow(false)
         }
+    }
+
+    override fun onDestroyView() {
+        // Leaving the viewer: drop HDR color mode so the rest of the UI renders in SDR again.
+        hdrColorMode.reset()
+        super.onDestroyView()
     }
 }

@@ -16,6 +16,12 @@ class MediaSliderConfiguration(
     var items: List<SliderItemViewHolder>,
     var loadMore: LoadMore?,
     var onAssetSelected: (SliderItemViewHolder) -> Unit = {},
+    /**
+     * Called on the main thread after the primary image of a page finishes loading, with true when
+     * the decoded bitmap carries an Ultra HDR gain map. Hosts use it to switch their window into
+     * HDR color mode. Default no-op for hosts that do not care about HDR.
+     */
+    var onImageHdrDetected: (Boolean) -> Unit = {},
     val animationSpeedMillis: Int,
     val maxCutOffHeight: Int,
     val maxCutOffWidth: Int,

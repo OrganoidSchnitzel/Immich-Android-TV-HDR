@@ -13,6 +13,7 @@ import nl.giejay.android.tv.immich.R
 import nl.giejay.android.tv.immich.api.ApiClient
 import nl.giejay.android.tv.immich.shared.prefs.API_KEY
 import nl.giejay.android.tv.immich.shared.prefs.PreferenceManager
+import nl.giejay.android.tv.immich.shared.util.HdrColorModeController
 import nl.giejay.mediaslider.config.MediaSliderConfiguration
 import nl.giejay.mediaslider.util.MediaSliderListener
 import nl.giejay.mediaslider.view.MediaSliderView
@@ -21,6 +22,7 @@ import timber.log.Timber
 class ScreenSaverService : DreamService(), MediaSliderListener, ScreenSaverAssetLoader.Host {
     private var ioScope = CoroutineScope(Job() + Dispatchers.IO)
     private var mediaSliderView: MediaSliderView? = null
+    private val hdrColorMode = HdrColorModeController { window }
 
     @SuppressLint("UnsafeOptInUsageError")
     override fun onDreamingStarted() {
@@ -48,6 +50,7 @@ class ScreenSaverService : DreamService(), MediaSliderListener, ScreenSaverAsset
 
     override fun onDreamingStopped() {
         ioScope.cancel()
+        hdrColorMode.reset()
         mediaSliderView?.onDestroy()
         super.onDreamingStopped()
     }
@@ -65,6 +68,7 @@ class ScreenSaverService : DreamService(), MediaSliderListener, ScreenSaverAsset
     }
 
     override fun onScreenSaverConfigurationReady(configuration: MediaSliderConfiguration) {
+        configuration.onImageHdrDetected = { hasGainmap -> hdrColorMode.onHdrDetected(hasGainmap) }
         mediaSliderView?.loadMediaSliderView(configuration)
         mediaSliderView?.toggleSlideshow(false)
     }

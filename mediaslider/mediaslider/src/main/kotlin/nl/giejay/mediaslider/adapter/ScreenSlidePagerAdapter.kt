@@ -2,7 +2,9 @@ package nl.giejay.mediaslider.adapter
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
+import android.os.Build
 import android.view.LayoutInflater
 import android.view.View
 import android.view.View.GONE
@@ -17,6 +19,7 @@ import com.zeuskartik.mediaslider.R
 import nl.giejay.mediaslider.player.AmlogicSafeRenderersFactory
 import nl.giejay.mediaslider.config.MediaSliderConfiguration
 import nl.giejay.mediaslider.model.SliderItem
+import nl.giejay.mediaslider.transformations.HdrGainmapTransformation
 import nl.giejay.mediaslider.model.SliderItemType
 import nl.giejay.mediaslider.model.SliderItemViewHolder
 import nl.giejay.mediaslider.view.ExoPlayerListener
@@ -59,11 +62,11 @@ class ScreenSlidePagerAdapter(private val context: Context,
         if (model.type == SliderItemType.IMAGE) {
             if (model.hasSecondaryItem()) {
                 view = inflater.inflate(R.layout.image_double_item, container, false)
-                loadImageIntoView(view, R.id.left_image, position, model.mainItem)
-                loadImageIntoView(view, R.id.right_image, position, model.secondaryItem!!)
+                loadImageIntoView(view, R.id.left_image, position, model.mainItem, isPrimary = true)
+                loadImageIntoView(view, R.id.right_image, position, model.secondaryItem!!, isPrimary = false)
             } else {
                 view = inflater.inflate(R.layout.image_item, container, false)
-                loadImageIntoView(view, R.id.mBigImage, position, model.mainItem)
+                loadImageIntoView(view, R.id.mBigImage, position, model.mainItem, isPrimary = true)
             }
         } else if (model.type == SliderItemType.VIDEO) {
             // Use texture view for vertical videos OR if this position previously failed with SurfaceView
@@ -99,7 +102,8 @@ class ScreenSlidePagerAdapter(private val context: Context,
     private fun loadImageIntoView(imageRootLayout: View,
                                   imageViewResource: Int,
                                   position: Int,
-                                  model: SliderItem) {
+                                  model: SliderItem,
+                                  isPrimary: Boolean) {
         imageView = imageRootLayout.findViewById(imageViewResource)
         val progressBar = imageRootLayout.findViewById<ProgressBar>(R.id.mProgressBar)
         if (progressBar != null) {
@@ -107,7 +111,7 @@ class ScreenSlidePagerAdapter(private val context: Context,
         }
         var glideLoader = Glide.with(context)
             .load(if (config.isOnlyUseThumbnails) model.thumbnailUrl else model.url)
-            .transform(config.glideTransformation.transform(context, config))
+            .transform(HdrGainmapTransformation(context, config))
             .listener(object : RequestListener<Drawable> {
                 override fun onLoadFailed(e: GlideException?,
                                           model: Any?,
@@ -124,6 +128,12 @@ class ScreenSlidePagerAdapter(private val context: Context,
                                              dataSource: com.bumptech.glide.load.DataSource,
                                              isFirstResource: Boolean): Boolean {
                     hideProgressBar(position)
+                    if (isPrimary) {
+                        // Let the host switch its window into HDR when this asset is an Ultra HDR
+                        // image. Only reported for the primary image so a plain secondary image in
+                        // a merged-portrait page cannot cancel the HDR mode again.
+                        config.onImageHdrDetected(hasGainmap(resource))
+                    }
                     return false
                 }
 
@@ -133,6 +143,13 @@ class ScreenSlidePagerAdapter(private val context: Context,
                 .load(model.thumbnailUrl))
         }
         glideLoader.into(imageView!!)
+    }
+
+    private fun hasGainmap(resource: Drawable): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            return false
+        }
+        return (resource as? BitmapDrawable)?.bitmap?.hasGainmap() == true
     }
 
     override fun getCount(): Int {
