@@ -160,6 +160,8 @@
     <string name="photo_transformation_desc">Photo transformation</string>
     <string name="force_original_video">Force original video</string>
     <string name="force_original_video_desc">Play original video, even when transcode is available</string>
+    <string name="display_hdr_images">Display HDR images</string>
+    <string name="display_hdr_images_desc">Show Ultra HDR photos (with a gain map) in HDR on Android 14+. Requires an HDR display that supports HDR for app content. Turn off if photos look wrong or your device only does HDR for video.</string>
     <string name="dpad_seek_in_video">D-pad seeks in video</string>
     <string name="dpad_seek_in_video_desc">Left/Right seek ~10s in video instead of changing assets. Fast-forward/rewind on the remote always seek. Off by default.</string>
     <string name="load_edited_photo">Load edited photos</string>

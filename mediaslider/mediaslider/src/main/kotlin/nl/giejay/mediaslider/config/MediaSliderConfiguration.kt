@@ -22,6 +22,12 @@ class MediaSliderConfiguration(
      * HDR color mode. Default no-op for hosts that do not care about HDR.
      */
     var onImageHdrDetected: (Boolean) -> Unit = {},
+    /**
+     * Called on the main thread when a video page becomes the current item. Hosts drop any HDR
+     * window color mode set for a previous image so the video decoder can drive the display into
+     * its native HDR/Dolby Vision output instead of being composited in an app-forced HDR window.
+     */
+    var onVideoShown: () -> Unit = {},
     val animationSpeedMillis: Int,
     val maxCutOffHeight: Int,
     val maxCutOffWidth: Int,

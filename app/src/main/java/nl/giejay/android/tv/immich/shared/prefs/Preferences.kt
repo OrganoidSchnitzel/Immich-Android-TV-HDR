@@ -259,6 +259,10 @@ data object SLIDER_DPAD_SEEK_IN_VIDEO : BooleanPref(false,
     ImmichApplication.appContext!!.getString(R.string.dpad_seek_in_video),
     ImmichApplication.appContext!!.getString(R.string.dpad_seek_in_video_desc))
 
+data object SLIDER_DISPLAY_HDR_IMAGES : BooleanPref(true,
+    ImmichApplication.appContext!!.getString(R.string.display_hdr_images),
+    ImmichApplication.appContext!!.getString(R.string.display_hdr_images_desc))
+
 data object SLIDER_LOAD_EDITED_PHOTO : BooleanPref(false,
     ImmichApplication.appContext!!.getString(R.string.load_edited_photo),
     ImmichApplication.appContext!!.getString(R.string.load_edited_photo_desc))
@@ -462,7 +466,8 @@ data object ViewSlideshowDisplayPrefScreen : PrefScreen(ImmichApplication.appCon
             SLIDER_DPAD_SEEK_IN_VIDEO,
             SLIDER_LOAD_EDITED_PHOTO,
             SLIDER_MERGE_PORTRAIT_PHOTOS,
-            SLIDER_GLIDE_TRANSFORMATION
+            SLIDER_GLIDE_TRANSFORMATION,
+            SLIDER_DISPLAY_HDR_IMAGES
         ))
     )
 )

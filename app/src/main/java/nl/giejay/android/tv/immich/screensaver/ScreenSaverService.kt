@@ -13,6 +13,7 @@ import nl.giejay.android.tv.immich.R
 import nl.giejay.android.tv.immich.api.ApiClient
 import nl.giejay.android.tv.immich.shared.prefs.API_KEY
 import nl.giejay.android.tv.immich.shared.prefs.PreferenceManager
+import nl.giejay.android.tv.immich.shared.prefs.SLIDER_DISPLAY_HDR_IMAGES
 import nl.giejay.android.tv.immich.shared.util.HdrColorModeController
 import nl.giejay.mediaslider.config.MediaSliderConfiguration
 import nl.giejay.mediaslider.util.MediaSliderListener
@@ -68,7 +69,9 @@ class ScreenSaverService : DreamService(), MediaSliderListener, ScreenSaverAsset
     }
 
     override fun onScreenSaverConfigurationReady(configuration: MediaSliderConfiguration) {
-        configuration.onImageHdrDetected = { hasGainmap -> hdrColorMode.onHdrDetected(hasGainmap) }
+        val hdrImagesEnabled = PreferenceManager.get(SLIDER_DISPLAY_HDR_IMAGES)
+        configuration.onImageHdrDetected = { hasGainmap -> hdrColorMode.onHdrDetected(hasGainmap && hdrImagesEnabled) }
+        configuration.onVideoShown = { hdrColorMode.reset() }
         mediaSliderView?.loadMediaSliderView(configuration)
         mediaSliderView?.toggleSlideshow(false)
     }

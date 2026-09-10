@@ -217,6 +217,9 @@ open class MediaSliderView(context: Context) : ConstraintLayout(context) {
                 config.onAssetSelected(sliderItem)
 
                 if (sliderItem.type == SliderItemType.VIDEO) {
+                    // Drop any HDR window color mode from a previous image so the decoder can drive
+                    // the display's native HDR / Dolby Vision output for this video.
+                    config.onVideoShown()
                     val viewTag = mPager.findViewWithTag<ExoPlayerView>("view$sliderItemIndex") ?: return
                     if (!viewTag.isReady()) {
                         Timber.e("Player is not initialized properly, cannot play video.")

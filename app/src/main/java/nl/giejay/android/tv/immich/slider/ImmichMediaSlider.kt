@@ -12,6 +12,7 @@ import androidx.navigation.fragment.findNavController
 import nl.giejay.android.tv.immich.R
 import nl.giejay.android.tv.immich.shared.prefs.API_KEY
 import nl.giejay.android.tv.immich.shared.prefs.PreferenceManager
+import nl.giejay.android.tv.immich.shared.prefs.SLIDER_DISPLAY_HDR_IMAGES
 import nl.giejay.android.tv.immich.shared.util.HdrColorModeController
 import nl.giejay.mediaslider.plugin.TimelineStoryProgressPlugin
 import nl.giejay.mediaslider.view.MediaSliderFragment
@@ -62,7 +63,10 @@ class ImmichMediaSlider : MediaSliderFragment() {
         config.viewPlugins += enabledPlugins.viewPlugins
         config.keyEventPlugins += enabledPlugins.keyEventPlugins
 
-        config.onImageHdrDetected = { hasGainmap -> hdrColorMode.onHdrDetected(hasGainmap) }
+        val hdrImagesEnabled = PreferenceManager.get(SLIDER_DISPLAY_HDR_IMAGES)
+        config.onImageHdrDetected = { hasGainmap -> hdrColorMode.onHdrDetected(hasGainmap && hdrImagesEnabled) }
+        // A video must reclaim the display's native HDR/Dolby Vision path from any image HDR mode.
+        config.onVideoShown = { hdrColorMode.reset() }
 
         loadMediaSliderView(config)
 
