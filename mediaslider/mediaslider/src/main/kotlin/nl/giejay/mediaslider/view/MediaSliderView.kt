@@ -239,6 +239,10 @@ open class MediaSliderView(context: Context) : ConstraintLayout(context) {
                     controller.configureController(sliderItem, sliderItemIndex)
                 } else {
                     controller.setCurrentPlayer(null)
+                    // Apply the on-screen image's HDR status now that it is the current page.
+                    // Covers images that finished decoding while off-screen (their load listener
+                    // deliberately did not touch the window color mode).
+                    pagerAdapter?.reportHdrForImagePosition(sliderItemIndex)
                     controller.configureController(sliderItem, sliderItemIndex)
                     if (controller.slideShowPlaying) {
                         controller.startTimerNextAsset()

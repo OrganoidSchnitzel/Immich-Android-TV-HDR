@@ -35,6 +35,8 @@ class ScreenSlidePagerAdapter(private val context: Context,
                               private val exoPlayerListener: ExoPlayerListener) : PagerAdapter() {
     private var imageView: TouchImageView? = null
     private val progressBars: MutableMap<Int, ProgressBar> = HashMap()
+    // position -> whether the decoded primary image carries an Ultra HDR gain map
+    private val hdrByPosition: MutableMap<Int, Boolean> = HashMap()
     private val failedPositions = mutableSetOf<String>()
 
     fun setItems(items: List<SliderItemViewHolder>) {
@@ -129,10 +131,14 @@ class ScreenSlidePagerAdapter(private val context: Context,
                                              isFirstResource: Boolean): Boolean {
                     hideProgressBar(position)
                     if (isPrimary) {
-                        // Let the host switch its window into HDR when this asset is an Ultra HDR
-                        // image. Only reported for the primary image so a plain secondary image in
-                        // a merged-portrait page cannot cancel the HDR mode again.
-                        config.onImageHdrDetected(hasGainmap(resource))
+                        val hasGainmap = hasGainmap(resource)
+                        hdrByPosition[position] = hasGainmap
+                        // Only the on-screen image may drive the window color mode. Off-screen
+                        // pages are preloaded by the pager (e.g. the image next to a playing
+                        // video), and must NOT flip the window into HDR while a video is showing.
+                        if (position == currentIndex()) {
+                            config.onImageHdrDetected(hasGainmap)
+                        }
                     }
                     return false
                 }
@@ -143,6 +149,18 @@ class ScreenSlidePagerAdapter(private val context: Context,
                 .load(model.thumbnailUrl))
         }
         glideLoader.into(imageView!!)
+    }
+
+    /**
+     * Reports the on-screen image's HDR (gain map) status to the host so the window color mode
+     * follows the currently displayed image. Called when a page settles. Safe before the image has
+     * loaded: reports false until the decode finishes, at which point [instantiateItem]'s listener
+     * reports the real value if the image is still current.
+     */
+    fun reportHdrForImagePosition(position: Int) {
+        if (position !in items.indices) return
+        if (items[position].type != SliderItemType.IMAGE) return
+        config.onImageHdrDetected(hdrByPosition[position] == true)
     }
 
     private fun hasGainmap(resource: Drawable): Boolean {
