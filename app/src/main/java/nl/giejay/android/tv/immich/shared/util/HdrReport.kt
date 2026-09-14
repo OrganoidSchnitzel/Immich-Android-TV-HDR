@@ -5,6 +5,7 @@ import nl.giejay.android.tv.immich.shared.prefs.PreferenceManager
 import nl.giejay.android.tv.immich.shared.prefs.SLIDER_FORCE_ORIGINAL_VIDEO
 import nl.giejay.android.tv.immich.shared.prefs.SLIDER_HDR_IMAGE_MODE
 import nl.giejay.android.tv.immich.shared.prefs.SLIDER_ONLY_USE_THUMBNAILS
+import nl.giejay.mediaslider.hdr.HdrSurfaceStatus
 import nl.giejay.mediaslider.util.HdrDiagnostics
 
 /**
@@ -18,18 +19,20 @@ object HdrReport {
         val capabilities = HdrCapabilities.of(context)
         val forceOriginal = PreferenceManager.get(SLIDER_FORCE_ORIGINAL_VIDEO)
         val thumbnailsOnly = PreferenceManager.get(SLIDER_ONLY_USE_THUMBNAILS)
+        val plan = HdrImagePlan.of(PreferenceManager.get(SLIDER_HDR_IMAGE_MODE), capabilities)
 
         val sections = listOf(
             "DISPLAY" to capabilities.lines(),
             "SETTINGS" to listOf(
-                "HDR photos" to PreferenceManager.get(SLIDER_HDR_IMAGE_MODE).name,
+                "HDR photos" to "${plan.mode.name} -> ${plan.describe()}",
                 "Only use thumbnails" to if (thumbnailsOnly)
                     "on - photos come from the server's preview JPEG, which has no gain map"
                 else "off",
                 "Original video quality" to if (forceOriginal) "on" else
                     "off - videos play the server's transcode, which is SDR"
             ),
-            "LAST SEEN IN THE SLIDESHOW" to HdrDiagnostics.lines()
+            "LAST SEEN IN THE SLIDESHOW" to
+                HdrDiagnostics.lines() + ("HDR photo layer" to HdrSurfaceStatus.describe())
         )
 
         return buildString {
@@ -38,20 +41,28 @@ object HdrReport {
                 lines.forEach { (label, value) -> append("  ").append(label).append(": ").append(value).append('\n') }
                 append('\n')
             }
-            append(hint(capabilities, forceOriginal, thumbnailsOnly))
+            append(hint(capabilities, plan, forceOriginal, thumbnailsOnly))
         }
     }
 
-    private fun hint(capabilities: HdrCapabilities, forceOriginal: Boolean, thumbnailsOnly: Boolean): String = when {
+    private fun hint(
+        capabilities: HdrCapabilities,
+        plan: HdrImagePlan,
+        forceOriginal: Boolean,
+        thumbnailsOnly: Boolean
+    ): String = when {
         !forceOriginal && capabilities.supportsDolbyVisionVideo ->
             "This TV supports Dolby Vision, but 'Original video quality' is off, so Immich serves " +
                 "its own SDR transcode. Turn it on under View settings > Slideshow > Display."
-        !capabilities.ultraHdrImagesSupported ->
-            "HDR photos cannot be rendered on this device: ${capabilities.ultraHdrVerdict()}. " +
-                "HDR videos are unaffected."
         thumbnailsOnly ->
             "'Only use thumbnails' is on, so the gain map never reaches the app - a photo can " +
                 "never be HDR this way. Turn it off under View settings > Slideshow > Display."
-        else -> "HDR photos are supported here. If a photo still looks flat, check the gain map line above."
+        !plan.useWindowColorMode && !plan.useHdrSurface ->
+            "HDR photos cannot be rendered on this device: ${capabilities.ultraHdrVerdict()}. " +
+                "HDR videos are unaffected."
+        plan.useHdrSurface && HdrSurfaceStatus.lastFailure != null ->
+            "The HDR photo layer could not be used: ${HdrSurfaceStatus.lastFailure}. " +
+                "Photos fall back to SDR; HDR videos are unaffected."
+        else -> "HDR photos should work here. If one still looks flat, check the gain map line above."
     }
 }

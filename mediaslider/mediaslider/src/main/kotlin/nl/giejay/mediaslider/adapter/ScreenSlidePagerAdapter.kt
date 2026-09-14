@@ -2,12 +2,15 @@ package nl.giejay.mediaslider.adapter
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.os.Build
 import android.view.LayoutInflater
 import android.view.View
 import android.view.View.GONE
+import android.view.View.INVISIBLE
+import android.view.View.VISIBLE
 import android.view.ViewGroup
 import android.widget.ProgressBar
 import android.widget.Toast
@@ -19,6 +22,7 @@ import com.zeuskartik.mediaslider.R
 import nl.giejay.mediaslider.player.AmlogicSafeRenderersFactory
 import nl.giejay.mediaslider.config.MediaSliderConfiguration
 import nl.giejay.mediaslider.model.SliderItem
+import nl.giejay.mediaslider.hdr.HdrImageSurfaceView
 import nl.giejay.mediaslider.transformations.HdrGainmapTransformation
 import nl.giejay.mediaslider.util.HdrDiagnostics
 import nl.giejay.mediaslider.model.SliderItemType
@@ -38,6 +42,11 @@ class ScreenSlidePagerAdapter(private val context: Context,
     private val progressBars: MutableMap<Int, ProgressBar> = HashMap()
     // position -> whether the decoded primary image carries an Ultra HDR gain map
     private val hdrByPosition: MutableMap<Int, Boolean> = HashMap()
+    // Ultra HDR pages: their root view and the decoded bitmap the PQ surface renders.
+    private val imagePages: MutableMap<Int, View> = HashMap()
+    private val hdrBitmaps: MutableMap<Int, Bitmap> = HashMap()
+    private var hdrSurfacePosition: Int? = null
+    private var hdrSurfaceGaveUp = false
     private val failedPositions = mutableSetOf<String>()
 
     fun setItems(items: List<SliderItemViewHolder>) {
@@ -103,6 +112,9 @@ class ScreenSlidePagerAdapter(private val context: Context,
             }
         }
         view?.tag = "view$position"
+        if (model.type == SliderItemType.IMAGE && view != null) {
+            imagePages[position] = view
+        }
         container.addView(view)
         return view!!
     }
@@ -144,6 +156,13 @@ class ScreenSlidePagerAdapter(private val context: Context,
                             HdrDiagnostics.recordImage(imageUrl, resource)
                         }
                         hdrByPosition[position] = hasGainmap
+                        val bitmap = (resource as? BitmapDrawable)?.bitmap
+                        if (hasGainmap && bitmap != null) {
+                            hdrBitmaps[position] = bitmap
+                            if (position == currentIndex()) {
+                                showHdrSurfaceFor(position)
+                            }
+                        }
                         // Only the on-screen image may drive the window color mode. Off-screen
                         // pages are preloaded by the pager (e.g. the image next to a playing
                         // video), and must NOT flip the window into HDR while a video is showing.
@@ -172,6 +191,52 @@ class ScreenSlidePagerAdapter(private val context: Context,
         if (position !in items.indices) return
         if (items[position].type != SliderItemType.IMAGE) return
         config.onImageHdrDetected(hdrByPosition[position] == true)
+        showHdrSurfaceFor(position)
+    }
+
+    /**
+     * Puts the Ultra HDR photo at [position] on its PQ surface and hides the SDR image view, or
+     * takes the surface down again when [position] is null (a video took over) or has no HDR photo.
+     *
+     * Only ever one page at a time: an off-screen PQ layer would keep the display in HDR while
+     * something else is on screen.
+     */
+    fun showHdrSurfaceFor(position: Int?) {
+        val target = position?.takeIf {
+            config.hdrPhotoSurface && !hdrSurfaceGaveUp && hdrBitmaps.containsKey(it)
+        }
+        hdrSurfacePosition?.takeIf { it != target }?.let { previous ->
+            hdrSurfacePosition = null
+            withHdrViews(previous) { surface, image ->
+                surface.visibility = GONE
+                image.visibility = VISIBLE
+            }
+        }
+        if (target == null || target == hdrSurfacePosition) return
+        val bitmap = hdrBitmaps[target] ?: return
+        withHdrViews(target) { surface, image ->
+            surface.onUnavailable = { onHdrSurfaceUnavailable() }
+            surface.setImage(bitmap, config.hdrPhotoWeight)
+            surface.visibility = VISIBLE
+            // INVISIBLE, not GONE: the image view keeps its place so nothing else reflows, and it
+            // is not drawn over the surface's punched-out region.
+            image.visibility = INVISIBLE
+            hdrSurfacePosition = target
+        }
+    }
+
+    private fun onHdrSurfaceUnavailable() {
+        if (hdrSurfaceGaveUp) return
+        hdrSurfaceGaveUp = true
+        Timber.w("Falling back to SDR photos: the HDR surface is not usable on this device")
+        showHdrSurfaceFor(null)
+    }
+
+    private inline fun withHdrViews(position: Int, block: (HdrImageSurfaceView, View) -> Unit) {
+        val page = imagePages[position] ?: return
+        val surface = page.findViewById<HdrImageSurfaceView>(R.id.hdr_image_surface) ?: return
+        val image = page.findViewById<View>(R.id.mBigImage) ?: return
+        block(surface, image)
     }
 
     /** EXIF orientations that mean the video is stored rotated: 180, 90 CW and 90 CCW. */
@@ -194,6 +259,11 @@ class ScreenSlidePagerAdapter(private val context: Context,
 
     override fun destroyItem(container: ViewGroup, position: Int, `object`: Any) {
         val view = `object` as View
+        if (hdrSurfacePosition == position) {
+            hdrSurfacePosition = null
+        }
+        imagePages.remove(position)
+        hdrBitmaps.remove(position)
         if (view is ExoPlayerView) {
             view.releasePlayer()
         } else {

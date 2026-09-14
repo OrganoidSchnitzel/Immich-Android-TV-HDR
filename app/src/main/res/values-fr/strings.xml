@@ -302,4 +302,14 @@
     <string name="meta_data_padding_dialog_title">Marge au-dessus et au-dessous de l’élément</string>
     <string name="meta_data_delete_desc">Supprimer l’élément</string>
     <string name="meta_data_save_desc">Enregistrer l’élément</string>
+    <string name="display_hdr_images">Photos HDR</string>
+    <string name="display_hdr_images_desc">Afficher les photos Ultra HDR (avec carte de gain) avec de véritables hautes lumières HDR. Nécessite Android 14+. Sur un téléviseur qui n\'active le HDR que pour la vidéo, la photo est dessinée sur son propre calque HDR, le même type de calque qu\'une vidéo.</string>
+    <string name="hdr_images_off">Désactivé</string>
+    <string name="hdr_images_auto">Auto (selon ce que gère l\'écran)</string>
+    <string name="hdr_images_surface">Calque HDR (téléviseurs HDR pour la vidéo seulement)</string>
+    <string name="hdr_images_window">Mode HDR de la fenêtre (peut casser la vidéo Dolby Vision)</string>
+    <string name="hdr_photo_brightness">Luminosité des photos HDR</string>
+    <string name="hdr_photo_brightness_desc">Quelle part du gain HDR de la photo appliquer. 100 correspond au rendu HDR complet prévu pour la photo ; réduisez si les hautes lumières paraissent brûlées sur votre téléviseur.</string>
+    <string name="hdr_diagnostics">Diagnostic HDR</string>
+    <string name="hdr_diagnostics_desc">Ce que cet appareil et cet écran déclarent à propos du HDR, et ce que le diaporama a vu en dernier</string>
 </resources>

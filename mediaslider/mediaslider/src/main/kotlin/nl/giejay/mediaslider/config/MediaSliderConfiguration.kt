@@ -28,6 +28,13 @@ class MediaSliderConfiguration(
      * its native HDR/Dolby Vision output instead of being composited in an app-forced HDR window.
      */
     var onVideoShown: () -> Unit = {},
+    /**
+     * Render Ultra HDR photos on a dedicated BT.2020 PQ surface instead of the normal image view.
+     * Set by hosts whose display only does HDR for video layers, never for app windows.
+     */
+    var hdrPhotoSurface: Boolean = false,
+    /** How much of a photo's gain map to apply: 0 looks like the SDR photo, 1 is the full HDR one. */
+    var hdrPhotoWeight: Float = 1f,
     val animationSpeedMillis: Int,
     val maxCutOffHeight: Int,
     val maxCutOffWidth: Int,

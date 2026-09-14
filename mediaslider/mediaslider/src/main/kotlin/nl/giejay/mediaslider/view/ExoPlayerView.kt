@@ -149,6 +149,7 @@ class ExoPlayerView @JvmOverloads constructor(context: Context, resourceId: Int,
         return player != null
     }
 
+    @OptIn(UnstableApi::class)
     private fun describeSurface(): String = when (playerView.videoSurfaceView) {
         is SurfaceView -> "SurfaceView (can carry HDR / Dolby Vision)"
         is TextureView -> "TextureView (GPU composited, always SDR)"

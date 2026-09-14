@@ -10,6 +10,14 @@
         android:src="@drawable/images"
         android:layout_centerInParent="true"
         />
+    <!-- Only made visible for an Ultra HDR photo, and the image view above is hidden at the same
+         time, so this layer is what reaches the screen. Gone the rest of the time, which is when
+         a SurfaceView costs nothing. -->
+    <nl.giejay.mediaslider.hdr.HdrImageSurfaceView
+        android:id="@+id/hdr_image_surface"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
     <ProgressBar
         android:id="@+id/mProgressBar"
         android:visibility="visible"

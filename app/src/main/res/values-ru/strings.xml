@@ -304,4 +304,14 @@
     <string name="meta_data_padding_dialog_title">Отступ сверху и снизу элемента</string>
     <string name="meta_data_delete_desc">Удалить элемент</string>
     <string name="meta_data_save_desc">Сохранить элемент</string>
+    <string name="display_hdr_images">HDR-фотографии</string>
+    <string name="display_hdr_images_desc">Показывать фотографии Ultra HDR (с картой усиления) с настоящими HDR-бликами. Требуется Android 14+. На телевизоре, который включает HDR только для видео, фотография выводится отдельным HDR-слоем — таким же, как у видео.</string>
+    <string name="hdr_images_off">Выключено</string>
+    <string name="hdr_images_auto">Автоматически (как поддерживает дисплей)</string>
+    <string name="hdr_images_surface">HDR-слой (для телевизоров с HDR только для видео)</string>
+    <string name="hdr_images_window">HDR-режим окна (может нарушить Dolby Vision в видео)</string>
+    <string name="hdr_photo_brightness">Яркость HDR-фотографий</string>
+    <string name="hdr_photo_brightness_desc">Какую часть HDR-усиления фотографии применять. 100 — полное HDR-изображение, как его снимали; уменьшите, если светлые участки выглядят пересвеченными на вашем телевизоре.</string>
+    <string name="hdr_diagnostics">Диагностика HDR</string>
+    <string name="hdr_diagnostics_desc">Что это устройство и дисплей сообщают об HDR и что слайд-шоу видело в последний раз</string>
 </resources>

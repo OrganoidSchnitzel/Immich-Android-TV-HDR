@@ -1,64 +1,47 @@
 package nl.giejay.android.tv.immich.shared.util
 
-import android.content.Context
+import android.annotation.SuppressLint
 import android.content.pm.ActivityInfo
-import android.os.Build
 import android.view.Window
-import nl.giejay.android.tv.immich.shared.prefs.HdrImageMode
 import nl.giejay.mediaslider.util.HdrDiagnostics
 import timber.log.Timber
 
 /**
- * Switches a host [Window] into HDR color mode so Ultra HDR (gain map) images are rendered with
- * real highlight headroom instead of being tone mapped to SDR.
+ * Switches a host [Window] into HDR colour mode so Ultra HDR photos are rendered with real
+ * highlight headroom instead of being tone mapped to SDR.
  *
- * Deliberately conservative, because the cost of getting this wrong lands on video: a window color
- * mode change makes the display renegotiate its output, and a renegotiation around the start of a
- * video is what drops a TV out of Dolby Vision. So the window is only ever touched when
+ * Only used when [HdrImagePlan.useWindowColorMode] says the display gives app windows that
+ * headroom. On a TV box it does not, and asking anyway is not free: the window colour mode change
+ * makes the display renegotiate its output, which is what drops a TV out of Dolby Vision when a
+ * video follows. Those devices get the PQ surface path instead.
  *
- *  - the device runs Android 14+ (gain maps and window HDR color mode do not exist before that),
- *  - [HdrCapabilities.ultraHdrImagesSupported] says the display really does HDR for app content
- *    (unless the user picked [HdrImageMode.ALWAYS]), and
- *  - an Ultra HDR image is the item actually on screen.
- *
- * Once in HDR mode the window stays there between images - plain SDR images render correctly in an
- * HDR window, and toggling per image would make many TVs blank while they resync. [reset] drops it
+ * Once in HDR mode the window stays there between photos - plain SDR photos render correctly in an
+ * HDR window, and toggling per photo would make many TVs blank while they resync. [reset] drops it
  * again when a video takes over or the viewer/screensaver is left.
  */
 class HdrColorModeController(
-    private val mode: HdrImageMode,
-    private val capabilities: HdrCapabilities,
+    private val plan: HdrImagePlan,
     private val windowProvider: () -> Window?
 ) {
-    constructor(context: Context, mode: HdrImageMode, windowProvider: () -> Window?) :
-        this(mode, HdrCapabilities.of(context), windowProvider)
-
     private var hdrActive = false
 
-    private val allowed: Boolean = when (mode) {
-        HdrImageMode.OFF -> false
-        HdrImageMode.AUTO -> capabilities.ultraHdrImagesSupported
-        HdrImageMode.ALWAYS -> Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
-    }
-
     init {
-        Timber.i(
-            "HDR images: mode=%s, allowed=%s, device verdict='%s', display HDR types=%s",
-            mode, allowed, capabilities.ultraHdrVerdict(), capabilities.supportedHdrTypes
-        )
-        if (!allowed) {
-            HdrDiagnostics.lastColorModeDecision = whyNotAllowed()
-        }
+        Timber.i("HDR photos: mode=%s, plan=%s", plan.mode, plan.describe())
+        HdrDiagnostics.lastColorModeDecision = "not used - ${plan.describe()}"
     }
 
-    /** Report whether the image currently on screen is an Ultra HDR image. */
+    /** Report whether the photo currently on screen is an Ultra HDR photo. */
+    // setColorMode needs API 26. useWindowColorMode is only ever true when the capabilities report
+    // Android 14 or newer (gain maps do not exist before that), which HdrColorModeControllerTest pins down,
+    // so every path reaching the call below is already well past 26. Lint cannot see that far.
+    @SuppressLint("NewApi")
     fun onHdrDetected(isHdr: Boolean) {
-        if (!allowed) {
+        if (!plan.useWindowColorMode) {
             return
         }
         if (!isHdr) {
             HdrDiagnostics.lastColorModeDecision =
-                if (hdrActive) "HDR (kept from an earlier image; this one is SDR)" else "default (SDR image)"
+                if (hdrActive) "HDR (kept from an earlier photo; this one is SDR)" else "default (SDR photo)"
             return
         }
         if (hdrActive) {
@@ -72,14 +55,15 @@ class HdrColorModeController(
         }
         window.colorMode = ActivityInfo.COLOR_MODE_HDR
         hdrActive = true
-        HdrDiagnostics.lastColorModeDecision = "HDR requested for this image"
-        Timber.i("Switched window to HDR color mode for Ultra HDR image")
+        HdrDiagnostics.lastColorModeDecision = "HDR requested for this photo"
+        Timber.i("Switched window to HDR colour mode for an Ultra HDR photo")
     }
 
     /**
-     * Restore the default color mode. Call when a video becomes the current item, so the decoder
+     * Restore the default colour mode. Call when a video becomes the current item, so the decoder
      * can drive the display's native HDR/Dolby Vision output, and when leaving the slider.
      */
+    @SuppressLint("NewApi") // Only reachable once onHdrDetected has run on Android 14+; see above.
     fun reset() {
         if (!hdrActive) {
             return
@@ -87,11 +71,6 @@ class HdrColorModeController(
         windowProvider()?.colorMode = ActivityInfo.COLOR_MODE_DEFAULT
         hdrActive = false
         HdrDiagnostics.lastColorModeDecision = "default (released for video / on exit)"
-        Timber.i("Restored default window color mode")
-    }
-
-    private fun whyNotAllowed(): String = when (mode) {
-        HdrImageMode.OFF -> "never touched - HDR photos are set to Off"
-        else -> "never touched - ${capabilities.ultraHdrVerdict()}"
+        Timber.i("Restored default window colour mode")
     }
 }

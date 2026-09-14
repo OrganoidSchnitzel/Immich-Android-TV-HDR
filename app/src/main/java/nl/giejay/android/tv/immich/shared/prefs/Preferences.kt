@@ -279,6 +279,10 @@ data object SLIDER_HDR_IMAGE_MODE : EnumByTitlePref<HdrImageMode>(HdrImageMode.A
     }
 }
 
+data object SLIDER_HDR_PHOTO_BRIGHTNESS : IntSeekbarPref(100,
+    ImmichApplication.appContext!!.getString(R.string.hdr_photo_brightness),
+    ImmichApplication.appContext!!.getString(R.string.hdr_photo_brightness_desc))
+
 data object SLIDER_LOAD_EDITED_PHOTO : BooleanPref(false,
     ImmichApplication.appContext!!.getString(R.string.load_edited_photo),
     ImmichApplication.appContext!!.getString(R.string.load_edited_photo_desc))
@@ -495,7 +499,8 @@ data object ViewSlideshowDisplayPrefScreen : PrefScreen(ImmichApplication.appCon
             SLIDER_LOAD_EDITED_PHOTO,
             SLIDER_MERGE_PORTRAIT_PHOTOS,
             SLIDER_GLIDE_TRANSFORMATION,
-            SLIDER_HDR_IMAGE_MODE
+            SLIDER_HDR_IMAGE_MODE,
+            SLIDER_HDR_PHOTO_BRIGHTNESS
         ))
     )
 )

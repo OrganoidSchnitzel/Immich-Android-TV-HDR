@@ -12,10 +12,17 @@ import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 
 /**
- * The window color mode is the one thing in the HDR photo path that can damage video playback, so
- * the cases that must never touch it are pinned down here.
+ * The window colour mode is the one part of the HDR photo path that can damage video playback, so
+ * the cases that must never touch it are pinned down here, together with the choice between the
+ * window path and the PQ surface path.
  */
 class HdrColorModeControllerTest {
+
+    /** A phone-like display: HDR output and real headroom for app windows. */
+    private fun phoneDisplay() = capabilities(hdrSdrRatioAvailable = true)
+
+    /** A TV box: HDR output for video layers, no headroom for app windows. */
+    private fun tvDisplay() = capabilities(hdrSdrRatioAvailable = false)
 
     private fun capabilities(
         sdkInt: Int = 34,
@@ -31,32 +38,71 @@ class HdrColorModeControllerTest {
         hdrSdrRatio = if (hdrSdrRatioAvailable) 1f else null
     )
 
+    private fun controller(mode: HdrImageMode, capabilities: HdrCapabilities, window: Window) =
+        HdrColorModeController(HdrImagePlan.of(mode, capabilities)) { window }
+
     @Test
     fun `a tv that only does hdr for video never gets its window colour mode changed`() {
         val window: Window = mock()
-        val capabilities = capabilities(hdrSdrRatioAvailable = false)
+        val capabilities = tvDisplay()
 
         assertFalse(capabilities.ultraHdrImagesSupported)
         assertTrue(capabilities.supportsDolbyVisionVideo)
 
-        HdrColorModeController(HdrImageMode.AUTO, capabilities) { window }.onHdrDetected(true)
+        controller(HdrImageMode.AUTO, capabilities, window).onHdrDetected(true)
 
         verify(window, never()).colorMode = ActivityInfo.COLOR_MODE_HDR
+    }
+
+    @Test
+    fun `auto sends a tv down the hdr layer path instead`() {
+        val plan = HdrImagePlan.of(HdrImageMode.AUTO, tvDisplay())
+
+        assertFalse(plan.useWindowColorMode)
+        assertTrue(plan.useHdrSurface)
+    }
+
+    @Test
+    fun `auto prefers the window colour mode when the display has app headroom`() {
+        val plan = HdrImagePlan.of(HdrImageMode.AUTO, phoneDisplay())
+
+        assertTrue(plan.useWindowColorMode)
+        assertFalse(plan.useHdrSurface)
+    }
+
+    @Test
+    fun `a display with no hdr at all gets neither path`() {
+        val plan = HdrImagePlan.of(
+            HdrImageMode.AUTO,
+            capabilities(displayIsHdr = false, hdrSdrRatioAvailable = false, types = emptyList())
+        )
+
+        assertFalse(plan.useWindowColorMode)
+        assertFalse(plan.useHdrSurface)
+    }
+
+    @Test
+    fun `below android 14 neither path is offered`() {
+        val plan = HdrImagePlan.of(HdrImageMode.AUTO, capabilities(sdkInt = 33, hdrSdrRatioAvailable = false))
+
+        assertFalse(plan.useWindowColorMode)
+        assertFalse(plan.useHdrSurface)
     }
 
     @Test
     fun `off never changes the window colour mode even on a capable display`() {
         val window: Window = mock()
 
-        HdrColorModeController(HdrImageMode.OFF, capabilities()) { window }.onHdrDetected(true)
+        controller(HdrImageMode.OFF, phoneDisplay(), window).onHdrDetected(true)
 
         verify(window, never()).colorMode = ActivityInfo.COLOR_MODE_HDR
+        assertFalse(HdrImagePlan.of(HdrImageMode.OFF, phoneDisplay()).useHdrSurface)
     }
 
     @Test
-    fun `an ultra hdr image on a capable display switches the window into hdr once`() {
+    fun `an ultra hdr photo on a capable display switches the window into hdr once`() {
         val window: Window = mock()
-        val controller = HdrColorModeController(HdrImageMode.AUTO, capabilities()) { window }
+        val controller = controller(HdrImageMode.AUTO, phoneDisplay(), window)
 
         controller.onHdrDetected(true)
         controller.onHdrDetected(true)
@@ -65,10 +111,10 @@ class HdrColorModeControllerTest {
     }
 
     @Test
-    fun `an sdr image does not switch the window into hdr`() {
+    fun `an sdr photo does not switch the window into hdr`() {
         val window: Window = mock()
 
-        HdrColorModeController(HdrImageMode.AUTO, capabilities()) { window }.onHdrDetected(false)
+        controller(HdrImageMode.AUTO, phoneDisplay(), window).onHdrDetected(false)
 
         verify(window, never()).colorMode = ActivityInfo.COLOR_MODE_HDR
     }
@@ -76,7 +122,7 @@ class HdrColorModeControllerTest {
     @Test
     fun `reset hands the display back so a video can negotiate its own hdr output`() {
         val window: Window = mock()
-        val controller = HdrColorModeController(HdrImageMode.AUTO, capabilities()) { window }
+        val controller = controller(HdrImageMode.AUTO, phoneDisplay(), window)
 
         controller.onHdrDetected(true)
         controller.reset()
@@ -88,13 +134,21 @@ class HdrColorModeControllerTest {
     fun `reset does nothing when hdr was never switched on`() {
         val window: Window = mock()
 
-        HdrColorModeController(HdrImageMode.AUTO, capabilities(hdrSdrRatioAvailable = false)) { window }.reset()
+        controller(HdrImageMode.AUTO, tvDisplay(), window).reset()
 
         verify(window, never()).colorMode = ActivityInfo.COLOR_MODE_DEFAULT
     }
 
     @Test
-    fun `verdict explains why ultra hdr is unavailable`() {
+    fun `forcing the window path on a tv is possible but never also enables the layer path`() {
+        val plan = HdrImagePlan.of(HdrImageMode.WINDOW_HDR, tvDisplay())
+
+        assertTrue(plan.useWindowColorMode)
+        assertFalse(plan.useHdrSurface)
+    }
+
+    @Test
+    fun `verdict explains why app window headroom is unavailable`() {
         assertEquals(
             "no - needs Android 14, this device runs Android API 30",
             capabilities(sdkInt = 30).ultraHdrVerdict()
@@ -105,8 +159,8 @@ class HdrColorModeControllerTest {
         )
         assertEquals(
             "no - the display does HDR for video only, not for app content",
-            capabilities(hdrSdrRatioAvailable = false).ultraHdrVerdict()
+            tvDisplay().ultraHdrVerdict()
         )
-        assertEquals("yes", capabilities().ultraHdrVerdict())
+        assertEquals("yes", phoneDisplay().ultraHdrVerdict())
     }
 }

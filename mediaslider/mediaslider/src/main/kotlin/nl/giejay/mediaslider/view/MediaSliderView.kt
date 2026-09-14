@@ -14,7 +14,6 @@ import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
 import android.widget.Toast
 import androidx.constraintlayout.widget.ConstraintLayout
-import androidx.core.view.children
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -221,6 +220,9 @@ open class MediaSliderView(context: Context) : ConstraintLayout(context) {
                     // Drop any HDR window color mode from a previous image so the decoder can drive
                     // the display's native HDR / Dolby Vision output for this video.
                     HdrDiagnostics.recordVideo(sliderItem.url)
+                    // A photo's PQ layer must come down before the video negotiates its own HDR
+                    // output, or the compositor has two HDR layers to reconcile.
+                    pagerAdapter?.showHdrSurfaceFor(null)
                     config.onVideoShown()
                     val viewTag = mPager.findViewWithTag<ExoPlayerView>("view$sliderItemIndex") ?: return
                     if (!viewTag.isReady()) {
@@ -249,7 +251,9 @@ open class MediaSliderView(context: Context) : ConstraintLayout(context) {
                     if (controller.slideShowPlaying) {
                         controller.startTimerNextAsset()
                         val viewTag = mPager.findViewWithTag<ViewGroup>("view$sliderItemIndex") ?: return
-                        val touchImageView = viewTag.children.first() as? TouchImageView
+                        // By id, not by child order: an image page also holds the HDR surface and
+                        // the progress bar, and merged-portrait pages have no mBigImage at all.
+                        val touchImageView = viewTag.findViewById<TouchImageView>(R.id.mBigImage)
                         if (touchImageView != null && config.zoomAndScrollPanorama && config.interval >= 10 && mainItem.isPanorama) {
                             touchImageView.zoomAndScrollPanorama(config, sliderItem)
                         } else if (touchImageView != null && config.zoomAndScrollPanorama && !mainItem.isPanorama) {

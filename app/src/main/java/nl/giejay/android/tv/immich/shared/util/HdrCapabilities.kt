@@ -31,16 +31,27 @@ data class HdrCapabilities(
     val hdrSdrRatioAvailable: Boolean,
     val hdrSdrRatio: Float?
 ) {
-    /** True when this device can render Ultra HDR (gain map) images with real HDR headroom. */
+    /** True when the platform can decode a gain map at all (Android 14 and up). */
+    val supportsUltraHdrDecoding: Boolean
+        get() = sdkInt >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+
+    /** True when the compositor gives app windows headroom above SDR white. */
     val ultraHdrImagesSupported: Boolean
-        get() = sdkInt >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && hdrSdrRatioAvailable
+        get() = supportsUltraHdrDecoding && hdrSdrRatioAvailable
+
+    /**
+     * True when the display will switch its output into HDR for an HDR layer, which is what makes
+     * the BT.2020 PQ photo surface worth trying even though app windows get no headroom.
+     */
+    val canUseHdrVideoLayer: Boolean
+        get() = supportsUltraHdrDecoding && supportedHdrTypes.isNotEmpty()
 
     val supportsDolbyVisionVideo: Boolean
         get() = supportedHdrTypes.contains(DOLBY_VISION)
 
     /** Why [ultraHdrImagesSupported] is false, for the debug screen. */
     fun ultraHdrVerdict(): String = when {
-        sdkInt < Build.VERSION_CODES.UPSIDE_DOWN_CAKE ->
+        !supportsUltraHdrDecoding ->
             "no - needs Android 14, this device runs Android API $sdkInt"
         !displayIsHdr ->
             "no - the display does not report any HDR support"
@@ -54,9 +65,10 @@ data class HdrCapabilities(
         "Android API" to sdkInt.toString(),
         "Display reports HDR" to if (displayIsHdr) "yes" else "no",
         "HDR types" to supportedHdrTypes.joinToString(", ").ifBlank { "none" },
-        "HDR headroom for app content" to
+        "Reported app-content headroom" to
             if (hdrSdrRatioAvailable) "yes (current ratio ${hdrSdrRatio ?: 1f})" else "no",
-        "Ultra HDR photos possible" to ultraHdrVerdict()
+        "HDR headroom for app windows" to ultraHdrVerdict(),
+        "HDR layers (video-style) possible" to if (canUseHdrVideoLayer) "yes" else "no"
     )
 
     companion object {
@@ -75,7 +87,8 @@ data class HdrCapabilities(
             return HdrCapabilities(
                 sdkInt = Build.VERSION.SDK_INT,
                 device = "${Build.MANUFACTURER} ${Build.MODEL}",
-                displayIsHdr = display?.isHdr == true,
+                displayIsHdr = display != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                    display.isHdr,
                 supportedHdrTypes = display?.let { supportedHdrTypeNames(it) } ?: emptyList(),
                 hdrSdrRatioAvailable = ratioAvailable,
                 hdrSdrRatio = ratio
