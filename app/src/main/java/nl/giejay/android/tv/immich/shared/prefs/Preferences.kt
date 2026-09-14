@@ -20,6 +20,7 @@ import nl.giejay.android.tv.immich.R
 import nl.giejay.android.tv.immich.album.AlbumFragmentDirections
 import nl.giejay.android.tv.immich.album.SelectionType
 import nl.giejay.android.tv.immich.screensaver.ScreenSaverType
+import nl.giejay.android.tv.immich.shared.util.HdrReport
 import nl.giejay.mediaslider.transformations.GlideTransformations
 
 // general
@@ -259,9 +260,24 @@ data object SLIDER_DPAD_SEEK_IN_VIDEO : BooleanPref(false,
     ImmichApplication.appContext!!.getString(R.string.dpad_seek_in_video),
     ImmichApplication.appContext!!.getString(R.string.dpad_seek_in_video_desc))
 
-data object SLIDER_DISPLAY_HDR_IMAGES : BooleanPref(true,
+data object SLIDER_HDR_IMAGE_MODE : EnumByTitlePref<HdrImageMode>(HdrImageMode.AUTO,
     ImmichApplication.appContext!!.getString(R.string.display_hdr_images),
-    ImmichApplication.appContext!!.getString(R.string.display_hdr_images_desc))
+    ImmichApplication.appContext!!.getString(R.string.display_hdr_images_desc)) {
+
+    override fun fromPrefValue(prefValue: String): HdrImageMode {
+        return runCatching { HdrImageMode.valueOf(prefValue) }.getOrDefault(defaultValue)
+    }
+
+    override fun getEnumEntries(): Array<HdrImageMode> {
+        return HdrImageMode.entries.toTypedArray()
+    }
+
+    override fun createPreference(context: Context): ListPreference {
+        val pref = super.createPreference(context)
+        pref.summary = summary
+        return pref
+    }
+}
 
 data object SLIDER_LOAD_EDITED_PHOTO : BooleanPref(false,
     ImmichApplication.appContext!!.getString(R.string.load_edited_photo),
@@ -391,6 +407,18 @@ data object LOAD_BACKGROUND_IMAGE : BooleanPref(true,
 
 data object HIDDEN_HOME_ITEMS : StringSetPref(emptySet(), "", "")
 
+data object HDR_DIAGNOSTICS : ActionPref("hdr_diagnostics",
+    ImmichApplication.appContext!!.getString(R.string.hdr_diagnostics),
+    ImmichApplication.appContext!!.getString(R.string.hdr_diagnostics_desc),
+    { context, _ ->
+        AlertDialog.Builder(context)
+            .setTitle(R.string.hdr_diagnostics)
+            .setMessage(HdrReport.build(context))
+            .setPositiveButton(R.string.close) { dialog, _ -> dialog.dismiss() }
+            .show()
+        true
+    })
+
 data object USER_ID : ActionPref(null, ImmichApplication.appContext!!.getString(R.string.user_id),
     ImmichApplication.appContext!!.getString(R.string.user_id_desc),
     { context, _ ->
@@ -467,7 +495,7 @@ data object ViewSlideshowDisplayPrefScreen : PrefScreen(ImmichApplication.appCon
             SLIDER_LOAD_EDITED_PHOTO,
             SLIDER_MERGE_PORTRAIT_PHOTOS,
             SLIDER_GLIDE_TRANSFORMATION,
-            SLIDER_DISPLAY_HDR_IMAGES
+            SLIDER_HDR_IMAGE_MODE
         ))
     )
 )
@@ -577,7 +605,7 @@ data object ScreensaverPrefScreen : PrefScreen(ImmichApplication.appContext!!.ge
 )
 
 data object DebugPrefScreen : PrefScreen(ImmichApplication.appContext!!.getString(R.string.debug_settings), "debug",
-    children = listOf(PrefCategory("", listOf(DEBUG_MODE, USER_ID))), { prefManager ->
+    children = listOf(PrefCategory("", listOf(DEBUG_MODE, HDR_DIAGNOSTICS, USER_ID))), { prefManager ->
         prefManager.findPreference<Preference>(USER_ID.key())?.summary = PreferenceManager.get(USER_ID)
     })
 

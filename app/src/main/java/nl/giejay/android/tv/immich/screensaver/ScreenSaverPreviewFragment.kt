@@ -18,7 +18,7 @@ import nl.giejay.android.tv.immich.R
 import nl.giejay.android.tv.immich.api.ApiClient
 import nl.giejay.android.tv.immich.shared.prefs.API_KEY
 import nl.giejay.android.tv.immich.shared.prefs.PreferenceManager
-import nl.giejay.android.tv.immich.shared.prefs.SLIDER_DISPLAY_HDR_IMAGES
+import nl.giejay.android.tv.immich.shared.prefs.SLIDER_HDR_IMAGE_MODE
 import nl.giejay.android.tv.immich.shared.util.HdrColorModeController
 import nl.giejay.mediaslider.config.MediaSliderConfiguration
 import nl.giejay.mediaslider.view.MediaSliderFragment
@@ -51,7 +51,9 @@ internal class ScreenSaverPreviewSliderView(context: Context) : MediaSliderView(
 class ScreenSaverPreviewFragment : MediaSliderFragment(), ScreenSaverAssetLoader.Host {
     private var ioScope = CoroutineScope(Job() + Dispatchers.IO)
     private var sliderView: ScreenSaverPreviewSliderView? = null
-    private val hdrColorMode = HdrColorModeController { activity?.window }
+    private val hdrColorMode by lazy {
+        HdrColorModeController(requireContext(), PreferenceManager.get(SLIDER_HDR_IMAGE_MODE)) { activity?.window }
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -127,8 +129,7 @@ class ScreenSaverPreviewFragment : MediaSliderFragment(), ScreenSaverAssetLoader
     override fun onScreenSaverConfigurationReady(configuration: MediaSliderConfiguration) {
         // null once the view is gone: the user left while the assets were still loading
         val slider = sliderView ?: return
-        val hdrImagesEnabled = PreferenceManager.get(SLIDER_DISPLAY_HDR_IMAGES)
-        configuration.onImageHdrDetected = { hasGainmap -> hdrColorMode.onHdrDetected(hasGainmap && hdrImagesEnabled) }
+        configuration.onImageHdrDetected = { hasGainmap -> hdrColorMode.onHdrDetected(hasGainmap) }
         configuration.onVideoShown = { hdrColorMode.reset() }
         slider.loadMediaSliderView(configuration)
         slider.toggleSlideshow(false)

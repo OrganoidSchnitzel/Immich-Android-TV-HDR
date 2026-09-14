@@ -159,9 +159,14 @@
     <string name="photo_transformation">Photo transformation</string>
     <string name="photo_transformation_desc">Photo transformation</string>
     <string name="force_original_video">Force original video</string>
-    <string name="force_original_video_desc">Play original video, even when transcode is available</string>
-    <string name="display_hdr_images">Display HDR images</string>
-    <string name="display_hdr_images_desc">Show Ultra HDR photos (with a gain map) in HDR on Android 14+. Requires an HDR display that supports HDR for app content. Turn off if photos look wrong or your device only does HDR for video.</string>
+    <string name="force_original_video_desc">Play the original video instead of the server transcode. Required for Dolby Vision and HDR video: the Immich transcode is tone mapped to SDR.</string>
+    <string name="display_hdr_images">HDR photos</string>
+    <string name="display_hdr_images_desc">Render Ultra HDR photos (with a gain map) using HDR highlights. Needs Android 14+ and a display that does HDR for app content, not just for video.</string>
+    <string name="hdr_images_off">Off</string>
+    <string name="hdr_images_auto">Auto (only if the display supports it)</string>
+    <string name="hdr_images_always">Always (may break Dolby Vision video)</string>
+    <string name="hdr_diagnostics">HDR diagnostics</string>
+    <string name="hdr_diagnostics_desc">What this device and display report about HDR, and what the slideshow last saw</string>
     <string name="dpad_seek_in_video">D-pad seeks in video</string>
     <string name="dpad_seek_in_video_desc">Left/Right seek ~10s in video instead of changing assets. Fast-forward/rewind on the remote always seek. Off by default.</string>
     <string name="load_edited_photo">Load edited photos</string>

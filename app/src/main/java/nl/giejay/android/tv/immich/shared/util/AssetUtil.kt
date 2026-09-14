@@ -87,7 +87,10 @@ fun Asset.toSliderItem(): SliderItem {
             PreferenceManager.get(SLIDER_LOAD_EDITED_PHOTO)
         ),
         itemType,
-        this.exifInfo?.orientation ?: if (itemType == SliderItemType.IMAGE) 1 else 6,
+        // Unknown orientation means "not rotated". Assuming a rotated video here used to push every
+        // video without rotation metadata onto a TextureView, which can never carry HDR or Dolby
+        // Vision; the slider detects a real rotation from the player instead.
+        this.exifInfo?.orientation ?: 1,
         AssetMetaDataMapping.providersFor(this),
         ApiUtil.getThumbnailUrl(this.id, "preview", PreferenceManager.get(SLIDER_LOAD_EDITED_PHOTO)),
         isPanorama = this.isPanoramaImage(),

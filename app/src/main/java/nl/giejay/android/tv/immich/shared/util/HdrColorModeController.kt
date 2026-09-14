@@ -1,47 +1,97 @@
 package nl.giejay.android.tv.immich.shared.util
 
+import android.content.Context
 import android.content.pm.ActivityInfo
 import android.os.Build
 import android.view.Window
+import nl.giejay.android.tv.immich.shared.prefs.HdrImageMode
+import nl.giejay.mediaslider.util.HdrDiagnostics
 import timber.log.Timber
 
 /**
- * Switches a host [Window] into HDR color mode so Ultra HDR (gain map) images are rendered in HDR
- * instead of tone-mapped to SDR.
+ * Switches a host [Window] into HDR color mode so Ultra HDR (gain map) images are rendered with
+ * real highlight headroom instead of being tone mapped to SDR.
  *
- * The window enters HDR mode the first time an Ultra HDR image is shown and stays there until
- * [reset] is called when leaving the viewer/screensaver. Plain SDR images render correctly in an
- * HDR window, so we deliberately do NOT toggle back to SDR between images: switching the display
- * color mode mid-slideshow makes many TVs re-negotiate the output and briefly blank the screen.
+ * Deliberately conservative, because the cost of getting this wrong lands on video: a window color
+ * mode change makes the display renegotiate its output, and a renegotiation around the start of a
+ * video is what drops a TV out of Dolby Vision. So the window is only ever touched when
  *
- * All calls are no-ops below Android 14 (API 34), where window HDR color mode does not exist.
+ *  - the device runs Android 14+ (gain maps and window HDR color mode do not exist before that),
+ *  - [HdrCapabilities.ultraHdrImagesSupported] says the display really does HDR for app content
+ *    (unless the user picked [HdrImageMode.ALWAYS]), and
+ *  - an Ultra HDR image is the item actually on screen.
+ *
+ * Once in HDR mode the window stays there between images - plain SDR images render correctly in an
+ * HDR window, and toggling per image would make many TVs blank while they resync. [reset] drops it
+ * again when a video takes over or the viewer/screensaver is left.
  */
-class HdrColorModeController(private val windowProvider: () -> Window?) {
+class HdrColorModeController(
+    private val mode: HdrImageMode,
+    private val capabilities: HdrCapabilities,
+    private val windowProvider: () -> Window?
+) {
+    constructor(context: Context, mode: HdrImageMode, windowProvider: () -> Window?) :
+        this(mode, HdrCapabilities.of(context), windowProvider)
+
     private var hdrActive = false
 
-    /** Report whether the image currently being shown is an Ultra HDR image. */
-    fun onHdrDetected(isHdr: Boolean) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            return
-        }
-        if (isHdr && !hdrActive) {
-            windowProvider()?.let { window ->
-                window.colorMode = ActivityInfo.COLOR_MODE_HDR
-                hdrActive = true
-                Timber.i("Switched window to HDR color mode for Ultra HDR image")
-            }
+    private val allowed: Boolean = when (mode) {
+        HdrImageMode.OFF -> false
+        HdrImageMode.AUTO -> capabilities.ultraHdrImagesSupported
+        HdrImageMode.ALWAYS -> Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+    }
+
+    init {
+        Timber.i(
+            "HDR images: mode=%s, allowed=%s, device verdict='%s', display HDR types=%s",
+            mode, allowed, capabilities.ultraHdrVerdict(), capabilities.supportedHdrTypes
+        )
+        if (!allowed) {
+            HdrDiagnostics.lastColorModeDecision = whyNotAllowed()
         }
     }
 
-    /** Restore the default color mode. Call when leaving the viewer/screensaver. */
-    fun reset() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+    /** Report whether the image currently on screen is an Ultra HDR image. */
+    fun onHdrDetected(isHdr: Boolean) {
+        if (!allowed) {
+            return
+        }
+        if (!isHdr) {
+            HdrDiagnostics.lastColorModeDecision =
+                if (hdrActive) "HDR (kept from an earlier image; this one is SDR)" else "default (SDR image)"
             return
         }
         if (hdrActive) {
-            windowProvider()?.colorMode = ActivityInfo.COLOR_MODE_DEFAULT
-            hdrActive = false
-            Timber.i("Restored default window color mode")
+            HdrDiagnostics.lastColorModeDecision = "HDR (already active)"
+            return
         }
+        val window = windowProvider()
+        if (window == null) {
+            HdrDiagnostics.lastColorModeDecision = "not applied - no window"
+            return
+        }
+        window.colorMode = ActivityInfo.COLOR_MODE_HDR
+        hdrActive = true
+        HdrDiagnostics.lastColorModeDecision = "HDR requested for this image"
+        Timber.i("Switched window to HDR color mode for Ultra HDR image")
+    }
+
+    /**
+     * Restore the default color mode. Call when a video becomes the current item, so the decoder
+     * can drive the display's native HDR/Dolby Vision output, and when leaving the slider.
+     */
+    fun reset() {
+        if (!hdrActive) {
+            return
+        }
+        windowProvider()?.colorMode = ActivityInfo.COLOR_MODE_DEFAULT
+        hdrActive = false
+        HdrDiagnostics.lastColorModeDecision = "default (released for video / on exit)"
+        Timber.i("Restored default window color mode")
+    }
+
+    private fun whyNotAllowed(): String = when (mode) {
+        HdrImageMode.OFF -> "never touched - HDR photos are set to Off"
+        else -> "never touched - ${capabilities.ultraHdrVerdict()}"
     }
 }

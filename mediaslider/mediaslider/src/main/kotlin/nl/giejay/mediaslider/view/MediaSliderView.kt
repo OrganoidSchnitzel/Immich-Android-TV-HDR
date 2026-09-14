@@ -39,6 +39,7 @@ import nl.giejay.mediaslider.plugin.MetadataViewPlugin
 import nl.giejay.mediaslider.plugin.SliderViewPlugin
 import nl.giejay.mediaslider.plugin.SliderViewPluginContext
 import nl.giejay.mediaslider.util.FixedSpeedScroller
+import nl.giejay.mediaslider.util.HdrDiagnostics
 import nl.giejay.mediaslider.util.LoadMoreResult
 import timber.log.Timber
 import java.lang.reflect.Field
@@ -219,6 +220,7 @@ open class MediaSliderView(context: Context) : ConstraintLayout(context) {
                 if (sliderItem.type == SliderItemType.VIDEO) {
                     // Drop any HDR window color mode from a previous image so the decoder can drive
                     // the display's native HDR / Dolby Vision output for this video.
+                    HdrDiagnostics.recordVideo(sliderItem.url)
                     config.onVideoShown()
                     val viewTag = mPager.findViewWithTag<ExoPlayerView>("view$sliderItemIndex") ?: return
                     if (!viewTag.isReady()) {

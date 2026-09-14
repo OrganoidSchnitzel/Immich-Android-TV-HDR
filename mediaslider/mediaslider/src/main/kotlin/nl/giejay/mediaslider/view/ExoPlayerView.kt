@@ -9,15 +9,21 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.ProgressBar
 import androidx.annotation.OptIn
+import android.view.SurfaceView
+import android.view.TextureView
+import androidx.media3.common.Format
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.ui.PlayerView
 import com.bumptech.glide.Glide
 import com.zeuskartik.mediaslider.R
 import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.NextRenderersFactory
 import nl.giejay.mediaslider.config.MediaSliderConfiguration
+import nl.giejay.mediaslider.util.HdrDiagnostics
+import timber.log.Timber
 
 /**
  * Fullscreen video surface + ExoPlayer. Transport controls live in [MediaSliderView]'s
@@ -53,6 +59,7 @@ class ExoPlayerView @JvmOverloads constructor(context: Context, resourceId: Int,
             .build()
         playerView.player = player
         if (!config.isVideoSoundEnable) player?.volume = 0f
+        player?.addAnalyticsListener(diagnosticsListener())
 
         player?.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -140,6 +147,53 @@ class ExoPlayerView @JvmOverloads constructor(context: Context, resourceId: Int,
 
     fun isReady(): Boolean {
         return player != null
+    }
+
+    private fun describeSurface(): String = when (playerView.videoSurfaceView) {
+        is SurfaceView -> "SurfaceView (can carry HDR / Dolby Vision)"
+        is TextureView -> "TextureView (GPU composited, always SDR)"
+        else -> "unknown"
+    }
+
+    /**
+     * Records what actually ended up decoding the stream, so the debug screen can tell a Dolby
+     * Vision stream on a Dolby Vision decoder apart from the server's tone mapped SDR transcode.
+     */
+    @OptIn(UnstableApi::class)
+    private fun diagnosticsListener() = object : AnalyticsListener {
+        override fun onVideoInputFormatChanged(
+            eventTime: AnalyticsListener.EventTime,
+            format: Format,
+            decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?
+        ) {
+            HdrDiagnostics.lastVideoSurface = describeSurface()
+            HdrDiagnostics.lastVideoFormat = describeFormat(format)
+            Timber.i("Video input format: %s on a %s", HdrDiagnostics.lastVideoFormat, HdrDiagnostics.lastVideoSurface)
+        }
+
+        override fun onVideoDecoderInitialized(
+            eventTime: AnalyticsListener.EventTime,
+            decoderName: String,
+            initializedTimestampMs: Long,
+            initializationDurationMs: Long
+        ) {
+            HdrDiagnostics.lastVideoDecoder = decoderName
+            Timber.i("Video decoder: %s", decoderName)
+        }
+    }
+
+    @OptIn(UnstableApi::class)
+    private fun describeFormat(format: Format): String {
+        val colorInfo = format.colorInfo
+        val range = when (colorInfo?.colorTransfer) {
+            androidx.media3.common.C.COLOR_TRANSFER_ST2084 -> "PQ (HDR10 / Dolby Vision)"
+            androidx.media3.common.C.COLOR_TRANSFER_HLG -> "HLG (HDR)"
+            androidx.media3.common.C.COLOR_TRANSFER_SDR -> "SDR"
+            null -> "no color info (assume SDR)"
+            else -> "transfer ${colorInfo.colorTransfer}"
+        }
+        return "${format.sampleMimeType ?: "?"} ${format.codecs ?: ""} " +
+            "${format.width}x${format.height} - $range"
     }
 
     @OptIn(UnstableApi::class)

@@ -20,6 +20,7 @@ import nl.giejay.mediaslider.player.AmlogicSafeRenderersFactory
 import nl.giejay.mediaslider.config.MediaSliderConfiguration
 import nl.giejay.mediaslider.model.SliderItem
 import nl.giejay.mediaslider.transformations.HdrGainmapTransformation
+import nl.giejay.mediaslider.util.HdrDiagnostics
 import nl.giejay.mediaslider.model.SliderItemType
 import nl.giejay.mediaslider.model.SliderItemViewHolder
 import nl.giejay.mediaslider.view.ExoPlayerListener
@@ -71,8 +72,13 @@ class ScreenSlidePagerAdapter(private val context: Context,
                 loadImageIntoView(view, R.id.mBigImage, position, model.mainItem, isPrimary = true)
             }
         } else if (model.type == SliderItemType.VIDEO) {
-            // Use texture view for vertical videos OR if this position previously failed with SurfaceView
-            val useTextureView = model.mainItem.orientation != 1 || failedPositions.contains(model.url)
+            // A TextureView is composited by the GPU and is therefore always SDR: a video on one
+            // can never drive the display into HDR or Dolby Vision. Keep it for the cases that
+            // need it - a video stored rotated, and a url that already failed on a SurfaceView -
+            // and put everything else on the SurfaceView. An orientation the server did not report
+            // now counts as "not rotated": treating it as portrait sent every video without
+            // rotation metadata down the SDR path.
+            val useTextureView = isRotated(model.mainItem.orientation) || failedPositions.contains(model.url)
             view = ExoPlayerView(context, if (useTextureView) R.layout.video_item_texture_view else R.layout.video_item)
             view.setupPlayer(config, AmlogicSafeRenderersFactory(context), exoPlayerListener) { player, error ->
                 val shouldRetry = !useTextureView && !failedPositions.contains(model.url)
@@ -111,8 +117,10 @@ class ScreenSlidePagerAdapter(private val context: Context,
         if (progressBar != null) {
             progressBars[position] = progressBar
         }
+        // Captured here: inside the Glide listener below, `model` is the listener's own parameter.
+        val imageUrl = if (config.isOnlyUseThumbnails) model.thumbnailUrl else model.url
         var glideLoader = Glide.with(context)
-            .load(if (config.isOnlyUseThumbnails) model.thumbnailUrl else model.url)
+            .load(imageUrl)
             .transform(HdrGainmapTransformation(context, config))
             .listener(object : RequestListener<Drawable> {
                 override fun onLoadFailed(e: GlideException?,
@@ -132,6 +140,9 @@ class ScreenSlidePagerAdapter(private val context: Context,
                     hideProgressBar(position)
                     if (isPrimary) {
                         val hasGainmap = hasGainmap(resource)
+                        if (position == currentIndex()) {
+                            HdrDiagnostics.recordImage(imageUrl, resource)
+                        }
                         hdrByPosition[position] = hasGainmap
                         // Only the on-screen image may drive the window color mode. Off-screen
                         // pages are preloaded by the pager (e.g. the image next to a playing
@@ -162,6 +173,9 @@ class ScreenSlidePagerAdapter(private val context: Context,
         if (items[position].type != SliderItemType.IMAGE) return
         config.onImageHdrDetected(hdrByPosition[position] == true)
     }
+
+    /** EXIF orientations that mean the video is stored rotated: 180, 90 CW and 90 CCW. */
+    private fun isRotated(orientation: Int): Boolean = orientation == 3 || orientation == 6 || orientation == 8
 
     private fun hasGainmap(resource: Drawable): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
