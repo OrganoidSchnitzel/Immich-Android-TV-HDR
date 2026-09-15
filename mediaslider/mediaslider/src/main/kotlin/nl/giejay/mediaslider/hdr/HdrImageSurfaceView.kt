@@ -2,8 +2,8 @@ package nl.giejay.mediaslider.hdr
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.PixelFormat
 import android.hardware.DataSpace
-import android.hardware.HardwareBuffer
 import android.media.ImageWriter
 import android.opengl.EGL14
 import android.opengl.EGLConfig
@@ -64,7 +64,15 @@ class HdrImageSurfaceView @JvmOverloads constructor(
     private var surfaceWidth = 0
     private var surfaceHeight = 0
 
+    /** Force a particular mechanism instead of the best one the driver offers. Null means auto. */
+    var forcedTagging: HdrTagging? = null
+
     init {
+        // Ask for the 10-bit format up front. The EGL paths would set it anyway, and it lets the
+        // ImageWriter path take the surface's own format rather than naming one - naming
+        // RGBA_1010102 is rejected outright, because the (format, data space) pair has no public
+        // ImageFormat to map onto.
+        holder.setFormat(PixelFormat.RGBA_1010102)
         holder.addCallback(this)
     }
 
@@ -86,10 +94,10 @@ class HdrImageSurfaceView @JvmOverloads constructor(
         val thread = HandlerThread("hdr-image-gl").apply { start() }
         this.thread = thread
         handler = Handler(thread.looper)
-        val tagging = EglHdrCapabilities.probe().preferredTagging()
+        val tagging = EglHdrCapabilities.probe().preferredTagging(forcedTagging)
         // Labelling the layer as well costs one transaction and covers the case where the
-        // compositor looks at the layer rather than the buffer.
-        val control = surfaceControl?.takeIf { tagging == HdrTagging.PRODUCER_PQ }
+        // compositor looks at the layer rather than at the buffers.
+        val control = surfaceControl
         control?.let(::tagLayerAsPq)
         handler?.post { createSession(holder, tagging, control) }
     }
@@ -204,6 +212,9 @@ class HdrImageSurfaceView @JvmOverloads constructor(
             if (!upload(bitmap)) return
             renderer.draw(bitmap, width, height, weight, usePq = tagging != HdrTagging.EGL_HLG)
             EGL14.eglSwapBuffers(display, windowSurface)
+            layerToTag?.takeIf { it.isValid }?.let { control ->
+                SurfaceControl.Transaction().use { it.setDataSpace(control, BT2020_PQ).apply() }
+            }
         }
 
         private fun renderThroughWriter(bitmap: Bitmap, width: Int, height: Int, weight: Float) {
@@ -265,12 +276,11 @@ class HdrImageSurfaceView @JvmOverloads constructor(
             }
             readback = ByteBuffer.allocateDirect(width * height * BYTES_PER_PIXEL)
                 .order(ByteOrder.nativeOrder())
-            imageWriter = ImageWriter.Builder(holder.surface)
-                .setHardwareBufferFormat(HardwareBuffer.RGBA_1010102)
-                .setDataSpace(BT2020_PQ)
-                .setWidthAndHeight(width, height)
-                .setMaxImages(MAX_IMAGES)
-                .build()
+            // Deliberately the format-less factory: it takes the surface's own format, which the
+            // view already set to RGBA_1010102. Naming the format instead throws, because
+            // (RGBA_1010102, BT.2020 PQ) has no public ImageFormat to be mapped onto. The data
+            // space is set per image below, which is what reaches the buffer.
+            imageWriter = ImageWriter.newInstance(holder.surface, MAX_IMAGES)
         }
 
         private fun upload(bitmap: Bitmap): Boolean {
@@ -329,6 +339,7 @@ class HdrImageSurfaceView @JvmOverloads constructor(
                 )
                 check(context != EGL14.EGL_NO_CONTEXT) { "eglCreateContext failed: ${EGL14.eglGetError()}" }
 
+                @Suppress("NAME_SHADOWING")
                 val windowSurface = if (tagging == HdrTagging.PRODUCER_PQ) {
                     // The ImageWriter is the surface's producer; EGL must not also own it.
                     null
@@ -338,6 +349,9 @@ class HdrImageSurfaceView @JvmOverloads constructor(
                     )
                     check(created != EGL14.EGL_NO_SURFACE) {
                         "Could not create a 10-bit HDR surface ($tagging): ${EGL14.eglGetError()}"
+                    }
+                    if (tagging == HdrTagging.EGL_METADATA_PQ) {
+                        attachHdrMetadata(display, created)
                     }
                     created
                 }
@@ -360,6 +374,37 @@ class HdrImageSurfaceView @JvmOverloads constructor(
 
                 Timber.i("HDR photo surface ready using %s", tagging)
                 return GlSession(display, context, config, renderer, tagging, holder, layerToTag, windowSurface)
+            }
+
+            /**
+             * Mastering display metadata for a BT.2020 PQ picture, as SMPTE 2086 and CTA-861.3
+             * surface attributes. Values are scaled by EGL_METADATA_SCALING_EXT. What is described
+             * is the reference display the photo is graded for, not this TV: 1000 nits peak over
+             * BT.2020 primaries, which is the usual assumption for gain-map HDR.
+             */
+            private fun attachHdrMetadata(display: EGLDisplay, surface: EGLSurface) {
+                val attributes = listOf(
+                    EGL_SMPTE2086_DISPLAY_PRIMARY_RX to 0.708f,
+                    EGL_SMPTE2086_DISPLAY_PRIMARY_RY to 0.292f,
+                    EGL_SMPTE2086_DISPLAY_PRIMARY_GX to 0.170f,
+                    EGL_SMPTE2086_DISPLAY_PRIMARY_GY to 0.797f,
+                    EGL_SMPTE2086_DISPLAY_PRIMARY_BX to 0.131f,
+                    EGL_SMPTE2086_DISPLAY_PRIMARY_BY to 0.046f,
+                    EGL_SMPTE2086_WHITE_POINT_X to 0.3127f,
+                    EGL_SMPTE2086_WHITE_POINT_Y to 0.3290f,
+                    EGL_SMPTE2086_MAX_LUMINANCE to MASTERING_PEAK_NITS,
+                    EGL_SMPTE2086_MIN_LUMINANCE to MASTERING_MIN_NITS,
+                    EGL_CTA861_3_MAX_CONTENT_LIGHT_LEVEL to MASTERING_PEAK_NITS,
+                    EGL_CTA861_3_MAX_FRAME_AVERAGE_LEVEL to MASTERING_AVERAGE_NITS
+                )
+                val rejected = attributes.count { (attribute, value) ->
+                    !EGL14.eglSurfaceAttrib(display, surface, attribute, (value * METADATA_SCALING).toInt())
+                }
+                if (rejected > 0) {
+                    Timber.w("The driver rejected %d of %d HDR metadata attributes", rejected, attributes.size)
+                } else {
+                    Timber.i("Attached SMPTE 2086 / CTA-861.3 HDR metadata to the photo surface")
+                }
             }
 
             private fun surfaceAttributes(tagging: HdrTagging): IntArray = when (tagging) {
@@ -399,6 +444,25 @@ class HdrImageSurfaceView @JvmOverloads constructor(
         const val EGL_GL_COLORSPACE_KHR = 0x309D
         const val EGL_GL_COLORSPACE_BT2020_PQ_EXT = 0x3340
         const val EGL_GL_COLORSPACE_BT2020_HLG_EXT = 0x3540
+
+        // EGL_EXT_surface_SMPTE2086_metadata / EGL_EXT_surface_CTA861_3_metadata
+        const val EGL_SMPTE2086_DISPLAY_PRIMARY_RX = 0x3341
+        const val EGL_SMPTE2086_DISPLAY_PRIMARY_RY = 0x3342
+        const val EGL_SMPTE2086_DISPLAY_PRIMARY_GX = 0x3343
+        const val EGL_SMPTE2086_DISPLAY_PRIMARY_GY = 0x3344
+        const val EGL_SMPTE2086_DISPLAY_PRIMARY_BX = 0x3345
+        const val EGL_SMPTE2086_DISPLAY_PRIMARY_BY = 0x3346
+        const val EGL_SMPTE2086_WHITE_POINT_X = 0x3347
+        const val EGL_SMPTE2086_WHITE_POINT_Y = 0x3348
+        const val EGL_SMPTE2086_MAX_LUMINANCE = 0x3349
+        const val EGL_SMPTE2086_MIN_LUMINANCE = 0x334A
+        const val EGL_CTA861_3_MAX_CONTENT_LIGHT_LEVEL = 0x3360
+        const val EGL_CTA861_3_MAX_FRAME_AVERAGE_LEVEL = 0x3361
+        const val METADATA_SCALING = 50000f
+        const val MASTERING_PEAK_NITS = 1000f
+        const val MASTERING_AVERAGE_NITS = 400f
+        const val MASTERING_MIN_NITS = 0.005f
+
         const val RELEASE_TIMEOUT_SECONDS = 2L
         const val BYTES_PER_PIXEL = 4
         const val MAX_IMAGES = 2

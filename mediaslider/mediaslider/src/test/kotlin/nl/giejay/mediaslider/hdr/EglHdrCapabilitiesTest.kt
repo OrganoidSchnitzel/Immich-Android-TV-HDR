@@ -12,8 +12,9 @@ class EglHdrCapabilitiesTest {
         tenBitConfig: Boolean = true,
         pq: Boolean = false,
         hlg: Boolean = false,
-        dataSpace: Boolean = false
-    ) = EglHdrCapabilities(tenBitConfig, pq, hlg, dataSpace, extensions = "")
+        dataSpace: Boolean = false,
+        metadata: Boolean = false
+    ) = EglHdrCapabilities(tenBitConfig, pq, hlg, dataSpace, metadata, extensions = "")
 
     @Test
     fun `the colour space extension is preferred when the driver has it`() {
@@ -44,8 +45,34 @@ class EglHdrCapabilitiesTest {
     }
 
     @Test
+    fun `a forced mechanism wins over the ranking`() {
+        val driver = capabilities(pq = true, dataSpace = true, metadata = true)
+
+        assertEquals(HdrTagging.EGL_PQ, driver.preferredTagging())
+        assertEquals(HdrTagging.EGL_METADATA_PQ, driver.preferredTagging(HdrTagging.EGL_METADATA_PQ))
+    }
+
+    @Test
+    fun `forcing a mechanism the driver lacks falls back to the best it has`() {
+        val driver = capabilities(dataSpace = true)
+
+        assertFalse(driver.supports(HdrTagging.EGL_PQ))
+        assertEquals(HdrTagging.PRODUCER_PQ, driver.preferredTagging(HdrTagging.EGL_PQ))
+    }
+
+    @Test
+    fun `hdr static metadata counts as a way to mark the layer`() {
+        // The Homatics/SEI box advertises the SMPTE 2086 and CTA-861.3 surface extensions even
+        // though it has no BT.2020 colour space.
+        val driver = capabilities(metadata = true)
+
+        assertTrue(driver.usable)
+        assertTrue(driver.supports(HdrTagging.EGL_METADATA_PQ))
+    }
+
+    @Test
     fun `no ten bit config means no hdr layer at all`() {
-        val driver = capabilities(tenBitConfig = false, pq = true, dataSpace = true)
+        val driver = capabilities(tenBitConfig = false, pq = true, dataSpace = true, metadata = true)
 
         assertFalse(driver.usable)
         assertEquals(HdrTagging.NONE, driver.preferredTagging())
@@ -55,7 +82,8 @@ class EglHdrCapabilitiesTest {
     @Test
     fun `hdr related extensions are picked out of the driver's extension string`() {
         val driver = EglHdrCapabilities(
-            tenBitConfig = true, pqColorSpace = false, hlgColorSpace = false, producerDataSpace = true,
+            tenBitConfig = true, pqColorSpace = false, hlgColorSpace = false,
+            producerDataSpace = true, hdrMetadata = true,
             extensions = "EGL_KHR_image_base EGL_EXT_gl_colorspace_display_p3 " +
                 "EGL_EXT_surface_SMPTE2086_metadata EGL_ANDROID_recordable"
         )

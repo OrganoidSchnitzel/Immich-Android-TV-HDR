@@ -12,6 +12,7 @@ import androidx.navigation.fragment.findNavController
 import nl.giejay.android.tv.immich.R
 import nl.giejay.android.tv.immich.shared.prefs.API_KEY
 import nl.giejay.android.tv.immich.shared.prefs.PreferenceManager
+import nl.giejay.android.tv.immich.shared.prefs.HDR_LAYER_METHOD
 import nl.giejay.android.tv.immich.shared.prefs.SLIDER_HDR_IMAGE_MODE
 import nl.giejay.android.tv.immich.shared.prefs.SLIDER_HDR_PHOTO_BRIGHTNESS
 import nl.giejay.android.tv.immich.shared.util.HdrColorModeController
@@ -69,6 +70,7 @@ class ImmichMediaSlider : MediaSliderFragment() {
         config.onImageHdrDetected = { hasGainmap -> hdrColorMode.onHdrDetected(hasGainmap) }
         config.hdrPhotoSurface = hdrPlan.useHdrSurface
         config.hdrPhotoWeight = PreferenceManager.get(SLIDER_HDR_PHOTO_BRIGHTNESS) / 100f
+        config.hdrLayerMethod = PreferenceManager.get(HDR_LAYER_METHOD).tagging
         // A video must reclaim the display's native HDR/Dolby Vision path from any image HDR mode.
         config.onVideoShown = { hdrColorMode.reset() }
 

@@ -314,4 +314,6 @@
     <string name="hdr_photo_brightness_desc">Какую часть HDR-усиления фотографии применять. 100 — полное HDR-изображение, как его снимали; уменьшите, если светлые участки выглядят пересвеченными на вашем телевизоре.</string>
     <string name="hdr_diagnostics">Диагностика HDR</string>
     <string name="hdr_diagnostics_desc">Что это устройство и дисплей сообщают об HDR и что слайд-шоу видело в последний раз</string>
+    <string name="hdr_layer_method">Способ HDR-слоя</string>
+    <string name="hdr_layer_method_desc">Как HDR-слой сообщает телевизору, что содержит HDR. Оставьте «Auto», если HDR-фотографии выглядят правильно: какой способ понимает конкретный телевизор, можно выяснить только перебором.</string>
 </resources>

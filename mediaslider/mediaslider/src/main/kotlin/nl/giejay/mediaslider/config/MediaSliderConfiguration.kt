@@ -1,6 +1,7 @@
 package nl.giejay.mediaslider.config
 
 import nl.giejay.mediaslider.adapter.MetaDataItem
+import nl.giejay.mediaslider.hdr.EglHdrCapabilities
 import nl.giejay.mediaslider.model.SliderItemViewHolder
 import nl.giejay.mediaslider.plugin.SliderControllerPlugin
 import nl.giejay.mediaslider.plugin.SliderKeyEventPlugin
@@ -35,6 +36,8 @@ class MediaSliderConfiguration(
     var hdrPhotoSurface: Boolean = false,
     /** How much of a photo's gain map to apply: 0 looks like the SDR photo, 1 is the full HDR one. */
     var hdrPhotoWeight: Float = 1f,
+    /** Force one way of marking the HDR photo layer; null picks the best the driver offers. */
+    var hdrLayerMethod: EglHdrCapabilities.HdrTagging? = null,
     val animationSpeedMillis: Int,
     val maxCutOffHeight: Int,
     val maxCutOffWidth: Int,

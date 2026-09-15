@@ -312,4 +312,6 @@
     <string name="hdr_photo_brightness_desc">Quelle part du gain HDR de la photo appliquer. 100 correspond au rendu HDR complet prévu pour la photo ; réduisez si les hautes lumières paraissent brûlées sur votre téléviseur.</string>
     <string name="hdr_diagnostics">Diagnostic HDR</string>
     <string name="hdr_diagnostics_desc">Ce que cet appareil et cet écran déclarent à propos du HDR, et ce que le diaporama a vu en dernier</string>
+    <string name="hdr_layer_method">Méthode du calque HDR</string>
+    <string name="hdr_layer_method_desc">Comment le calque HDR indique au téléviseur qu\'il contient du HDR. Laissez sur Auto sauf si les photos HDR s\'affichent mal ; la méthode qu\'un téléviseur accepte ne se découvre qu\'en essayant.</string>
 </resources>

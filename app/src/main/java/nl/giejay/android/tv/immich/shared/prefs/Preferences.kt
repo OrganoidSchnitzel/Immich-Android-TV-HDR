@@ -411,6 +411,25 @@ data object LOAD_BACKGROUND_IMAGE : BooleanPref(true,
 
 data object HIDDEN_HOME_ITEMS : StringSetPref(emptySet(), "", "")
 
+data object HDR_LAYER_METHOD : EnumByTitlePref<HdrLayerMethod>(HdrLayerMethod.AUTO,
+    ImmichApplication.appContext!!.getString(R.string.hdr_layer_method),
+    ImmichApplication.appContext!!.getString(R.string.hdr_layer_method_desc)) {
+
+    override fun fromPrefValue(prefValue: String): HdrLayerMethod {
+        return runCatching { HdrLayerMethod.valueOf(prefValue) }.getOrDefault(defaultValue)
+    }
+
+    override fun getEnumEntries(): Array<HdrLayerMethod> {
+        return HdrLayerMethod.entries.toTypedArray()
+    }
+
+    override fun createPreference(context: Context): ListPreference {
+        val pref = super.createPreference(context)
+        pref.summary = summary
+        return pref
+    }
+}
+
 data object HDR_DIAGNOSTICS : ActionPref("hdr_diagnostics",
     ImmichApplication.appContext!!.getString(R.string.hdr_diagnostics),
     ImmichApplication.appContext!!.getString(R.string.hdr_diagnostics_desc),
@@ -610,7 +629,7 @@ data object ScreensaverPrefScreen : PrefScreen(ImmichApplication.appContext!!.ge
 )
 
 data object DebugPrefScreen : PrefScreen(ImmichApplication.appContext!!.getString(R.string.debug_settings), "debug",
-    children = listOf(PrefCategory("", listOf(DEBUG_MODE, HDR_DIAGNOSTICS, USER_ID))), { prefManager ->
+    children = listOf(PrefCategory("", listOf(DEBUG_MODE, HDR_DIAGNOSTICS, HDR_LAYER_METHOD, USER_ID))), { prefManager ->
         prefManager.findPreference<Preference>(USER_ID.key())?.summary = PreferenceManager.get(USER_ID)
     })
 

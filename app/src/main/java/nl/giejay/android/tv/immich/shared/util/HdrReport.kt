@@ -4,6 +4,7 @@ import android.content.Context
 import nl.giejay.android.tv.immich.shared.prefs.PreferenceManager
 import nl.giejay.android.tv.immich.shared.prefs.SLIDER_FORCE_ORIGINAL_VIDEO
 import nl.giejay.android.tv.immich.shared.prefs.SLIDER_HDR_IMAGE_MODE
+import nl.giejay.android.tv.immich.shared.prefs.HDR_LAYER_METHOD
 import nl.giejay.android.tv.immich.shared.prefs.SLIDER_GLIDE_TRANSFORMATION
 import nl.giejay.android.tv.immich.shared.prefs.SLIDER_MAX_CUT_OFF_HEIGHT
 import nl.giejay.android.tv.immich.shared.prefs.SLIDER_MAX_CUT_OFF_WIDTH
@@ -37,6 +38,7 @@ object HdrReport {
             },
             "SETTINGS" to listOf(
                 "HDR photos" to "${plan.mode.name} -> ${plan.describe()}",
+                "HDR layer method" to PreferenceManager.get(HDR_LAYER_METHOD).name,
                 "Only use thumbnails" to if (thumbnailsOnly)
                     "on - photos come from the server's preview JPEG, which has no gain map"
                 else "off",

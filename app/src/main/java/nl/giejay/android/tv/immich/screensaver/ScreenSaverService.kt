@@ -13,6 +13,7 @@ import nl.giejay.android.tv.immich.R
 import nl.giejay.android.tv.immich.api.ApiClient
 import nl.giejay.android.tv.immich.shared.prefs.API_KEY
 import nl.giejay.android.tv.immich.shared.prefs.PreferenceManager
+import nl.giejay.android.tv.immich.shared.prefs.HDR_LAYER_METHOD
 import nl.giejay.android.tv.immich.shared.prefs.SLIDER_HDR_IMAGE_MODE
 import nl.giejay.android.tv.immich.shared.prefs.SLIDER_HDR_PHOTO_BRIGHTNESS
 import nl.giejay.android.tv.immich.shared.util.HdrColorModeController
@@ -75,6 +76,7 @@ class ScreenSaverService : DreamService(), MediaSliderListener, ScreenSaverAsset
         configuration.onImageHdrDetected = { hasGainmap -> hdrColorMode.onHdrDetected(hasGainmap) }
         configuration.hdrPhotoSurface = hdrPlan.useHdrSurface
         configuration.hdrPhotoWeight = PreferenceManager.get(SLIDER_HDR_PHOTO_BRIGHTNESS) / 100f
+        configuration.hdrLayerMethod = PreferenceManager.get(HDR_LAYER_METHOD).tagging
         configuration.onVideoShown = { hdrColorMode.reset() }
         mediaSliderView?.loadMediaSliderView(configuration)
         mediaSliderView?.toggleSlideshow(false)

@@ -312,4 +312,6 @@
     <string name="favorite_removed">Removed from favorites</string>
     <string name="favorite_add_failed">Failed to add to favorites</string>
     <string name="favorite_remove_failed">Failed to remove from favorites</string>
+    <string name="hdr_layer_method">HDR layer method</string>
+    <string name="hdr_layer_method_desc">How the HDR photo layer tells the TV it holds HDR. Leave on Auto unless HDR photos look wrong; which mechanism a TV acts on has to be found by trying.</string>
 </resources>

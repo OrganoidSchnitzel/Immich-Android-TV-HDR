@@ -27,26 +27,37 @@ data class EglHdrCapabilities(
     val pqColorSpace: Boolean,
     val hlgColorSpace: Boolean,
     val producerDataSpace: Boolean,
+    val hdrMetadata: Boolean,
     val extensions: String
 ) {
     /** True when at least one way of producing an HDR layer is available. */
     val usable: Boolean
-        get() = tenBitConfig && (pqColorSpace || hlgColorSpace || producerDataSpace)
+        get() = tenBitConfig && supported().isNotEmpty()
 
-    /** How the surface should announce itself as HDR, best first. */
-    fun preferredTagging(): HdrTagging = when {
-        !tenBitConfig -> HdrTagging.NONE
-        pqColorSpace -> HdrTagging.EGL_PQ
-        // Producing the buffers ourselves beats the HLG colour space: HLG clips the gain map's
-        // brightest highlights, PQ carries all of them.
-        producerDataSpace -> HdrTagging.PRODUCER_PQ
-        hlgColorSpace -> HdrTagging.EGL_HLG
-        else -> HdrTagging.NONE
+    /** Every mechanism this driver can offer, best first. */
+    fun supported(): List<HdrTagging> = if (!tenBitConfig) emptyList() else buildList {
+        if (pqColorSpace) add(HdrTagging.EGL_PQ)
+        if (producerDataSpace) add(HdrTagging.PRODUCER_PQ)
+        if (hdrMetadata) add(HdrTagging.EGL_METADATA_PQ)
+        if (hlgColorSpace) add(HdrTagging.EGL_HLG)
+    }
+
+    fun supports(tagging: HdrTagging): Boolean = tagging in supported()
+
+    /**
+     * How the surface should announce itself as HDR. [forced] overrides the ranking, so a device
+     * whose compositor wants a different mechanism can be pointed at it without a new build;
+     * a mechanism this driver does not have falls back to the best one it does.
+     */
+    fun preferredTagging(forced: HdrTagging? = null): HdrTagging {
+        if (forced != null && supports(forced)) return forced
+        return supported().firstOrNull() ?: HdrTagging.NONE
     }
 
     fun describe(): String = when {
         !tenBitConfig -> "no - this GPU has no 10-bit (RGBA_1010102) EGL config"
-        else -> "yes, via ${preferredTagging()}"
+        supported().isEmpty() -> "no - this GPU offers no way to mark a layer as HDR"
+        else -> "yes, via ${preferredTagging()} (available: ${supported().joinToString(", ")})"
     }
 
     /**
@@ -72,16 +83,25 @@ data class EglHdrCapabilities(
 
         /**
          * No driver extension: render offscreen and hand the frames to the surface through an
-         * [android.media.ImageWriter] whose data space says BT.2020 PQ. The buffer's own data
-         * space is what the compositor reads, the same way a video decoder's output is read, so
-         * unlike a layer-level tag nothing overwrites it when the frame is queued.
+         * [android.media.ImageWriter], setting each image's data space to BT.2020 PQ. The buffer's
+         * own data space is what the compositor reads, the same way a video decoder's output is
+         * read, so unlike a layer-level tag nothing overwrites it when the frame is queued.
          */
-        PRODUCER_PQ
+        PRODUCER_PQ,
+
+        /**
+         * An ordinary 10-bit EGL surface carrying SMPTE 2086 and CTA-861.3 HDR static metadata -
+         * mastering display primaries and luminance, max content light level. Some TV pipelines
+         * decide whether to switch their output on the metadata rather than on the data space.
+         */
+        EGL_METADATA_PQ
     }
 
     companion object {
         private const val EXT_PQ = "EGL_EXT_gl_colorspace_bt2020_pq"
         private const val EXT_HLG = "EGL_EXT_gl_colorspace_bt2020_hlg"
+        private const val EXT_SMPTE2086 = "EGL_EXT_surface_SMPTE2086_metadata"
+        private const val EXT_CTA861_3 = "EGL_EXT_surface_CTA861_3_metadata"
         private val HDR_EXTENSION_HINTS =
             listOf("colorspace", "hdr", "smpte", "cta861", "2086", "pq", "hlg", "bt2020")
 
@@ -96,19 +116,24 @@ data class EglHdrCapabilities(
             probe()
         } catch (e: Exception) {
             Timber.w(e, "Could not probe the GPU for HDR layer support")
-            EglHdrCapabilities(false, false, false, false, "")
+            unusable()
         }
+
+        private fun unusable() = EglHdrCapabilities(
+            tenBitConfig = false, pqColorSpace = false, hlgColorSpace = false,
+            producerDataSpace = false, hdrMetadata = false, extensions = ""
+        )
 
         private fun doProbe(): EglHdrCapabilities {
             val display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
             if (display == EGL14.EGL_NO_DISPLAY) {
-                return EglHdrCapabilities(false, false, false, false, "")
+                return unusable()
             }
             val version = IntArray(2)
             // Reference counted and already initialised by the view system; deliberately never
             // terminated here, since that would pull the display out from under everything else.
             if (!EGL14.eglInitialize(display, version, 0, version, 1)) {
-                return EglHdrCapabilities(false, false, false, false, "")
+                return unusable()
             }
             val extensions = EGL14.eglQueryString(display, EGL14.EGL_EXTENSIONS).orEmpty()
             val capabilities = EglHdrCapabilities(
@@ -117,6 +142,7 @@ data class EglHdrCapabilities(
                 hlgColorSpace = extensions.contains(EXT_HLG),
                 // ImageWriter.Builder gained setDataSpace in Android 14.
                 producerDataSpace = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE,
+                hdrMetadata = extensions.contains(EXT_SMPTE2086),
                 extensions = extensions
             )
             Timber.i("HDR layer support: %s (HDR extensions: %s)",

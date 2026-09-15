@@ -216,6 +216,7 @@ class ScreenSlidePagerAdapter(private val context: Context,
         val bitmap = hdrBitmaps[target] ?: return
         withHdrViews(target) { surface, image ->
             surface.onUnavailable = { onHdrSurfaceUnavailable() }
+            surface.forcedTagging = config.hdrLayerMethod
             surface.setImage(bitmap, config.hdrPhotoWeight)
             surface.visibility = VISIBLE
             // INVISIBLE, not GONE: the image view keeps its place so nothing else reflows, and it
