@@ -4,7 +4,11 @@ import android.content.Context
 import nl.giejay.android.tv.immich.shared.prefs.PreferenceManager
 import nl.giejay.android.tv.immich.shared.prefs.SLIDER_FORCE_ORIGINAL_VIDEO
 import nl.giejay.android.tv.immich.shared.prefs.SLIDER_HDR_IMAGE_MODE
+import nl.giejay.android.tv.immich.shared.prefs.SLIDER_GLIDE_TRANSFORMATION
+import nl.giejay.android.tv.immich.shared.prefs.SLIDER_MAX_CUT_OFF_HEIGHT
+import nl.giejay.android.tv.immich.shared.prefs.SLIDER_MAX_CUT_OFF_WIDTH
 import nl.giejay.android.tv.immich.shared.prefs.SLIDER_ONLY_USE_THUMBNAILS
+import nl.giejay.mediaslider.hdr.EglHdrCapabilities
 import nl.giejay.mediaslider.hdr.HdrSurfaceStatus
 import nl.giejay.mediaslider.util.HdrDiagnostics
 
@@ -23,13 +27,24 @@ object HdrReport {
 
         val sections = listOf(
             "DISPLAY" to capabilities.lines(),
+            "GPU" to EglHdrCapabilities.probe().let { egl ->
+                listOf(
+                    "Can produce an HDR layer" to egl.describe(),
+                    "Colour space extensions" to egl.colorSpaceExtensions()
+                )
+            },
             "SETTINGS" to listOf(
                 "HDR photos" to "${plan.mode.name} -> ${plan.describe()}",
                 "Only use thumbnails" to if (thumbnailsOnly)
                     "on - photos come from the server's preview JPEG, which has no gain map"
                 else "off",
                 "Original video quality" to if (forceOriginal) "on" else
-                    "off - videos play the server's transcode, which is SDR"
+                    "off - videos play the server's transcode, which is SDR",
+                // Not HDR, but it decides how much of a photo is cut away, which is the other
+                // thing that makes a photo look wrong on screen.
+                "Photo transformation" to PreferenceManager.get(SLIDER_GLIDE_TRANSFORMATION).name,
+                "Max cut-off" to "${PreferenceManager.get(SLIDER_MAX_CUT_OFF_WIDTH)}% wide, " +
+                    "${PreferenceManager.get(SLIDER_MAX_CUT_OFF_HEIGHT)}% high"
             ),
             "LAST SEEN IN THE SLIDESHOW" to
                 HdrDiagnostics.lines() + ("HDR photo layer" to HdrSurfaceStatus.describe())

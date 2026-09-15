@@ -74,7 +74,7 @@ class UltraHdrGlRenderer(private val sdrWhiteNits: Float = DEFAULT_SDR_WHITE_NIT
      * bitmap's aspect ratio (what an ImageView with centerInside does). Glide has already cropped
      * or scaled the bitmap, so no further cropping happens here.
      */
-    fun draw(bitmap: Bitmap, surfaceWidth: Int, surfaceHeight: Int, weight: Float) {
+    fun draw(bitmap: Bitmap, surfaceWidth: Int, surfaceHeight: Int, weight: Float, usePq: Boolean) {
         GLES20.glViewport(0, 0, surfaceWidth, surfaceHeight)
         GLES20.glClearColor(0f, 0f, 0f, 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
@@ -98,6 +98,7 @@ class UltraHdrGlRenderer(private val sdrWhiteNits: Float = DEFAULT_SDR_WHITE_NIT
 
         applyGainmapUniforms(gainmap, weight)
         applyColorUniforms(bitmap, gainmap)
+        GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uUsePq"), if (usePq) 1f else 0f)
 
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, VERTICES_PER_QUAD)
         GLES20.glDisableVertexAttribArray(positionHandle)
@@ -266,6 +267,7 @@ class UltraHdrGlRenderer(private val sdrWhiteNits: Float = DEFAULT_SDR_WHITE_NIT
             uniform float uGainIsAlpha;
             uniform mat3 uToBt2020;
             uniform float uSdrWhiteNits;
+            uniform float uUsePq;
             // Parametric transfer function of the base image, split over two uniforms so no
             // uniform array location has to be queried (drivers disagree on the name to use).
             uniform vec3 uTransferGab;
@@ -288,6 +290,20 @@ class UltraHdrGlRenderer(private val sdrWhiteNits: Float = DEFAULT_SDR_WHITE_NIT
                 return pow((0.8359375 + 18.8515625 * ym) / (1.0 + 18.6875 * ym), 78.84375);
             }
 
+            // BT.2100 HLG. Scene light is normalised so diffuse white lands on the 75% signal
+            // level of BT.2408, which leaves about 3.8x of headroom above it before clipping.
+            float hlgFromRelative(float relative) {
+                float e = clamp(relative * 0.26496, 0.0, 1.0);
+                if (e <= 1.0 / 12.0) {
+                    return sqrt(3.0 * e);
+                }
+                return 0.17883277 * log(12.0 * e - 0.28466892) + 0.55991073;
+            }
+
+            float encode(float relative) {
+                return mix(hlgFromRelative(relative), pqFromNits(relative * uSdrWhiteNits), uUsePq);
+            }
+
             void main() {
                 vec3 encoded = texture2D(uBase, vTexCoord).rgb;
                 vec3 sdr = vec3(toLinear(encoded.r), toLinear(encoded.g), toLinear(encoded.b));
@@ -298,9 +314,11 @@ class UltraHdrGlRenderer(private val sdrWhiteNits: Float = DEFAULT_SDR_WHITE_NIT
                 vec3 logRatio = uLogRatioMin + (uLogRatioMax - uLogRatioMin) * shaped;
 
                 vec3 hdr = (sdr + uEpsilonSdr) * exp2(logRatio * uWeight) - uEpsilonHdr;
-                vec3 wide = max(uToBt2020 * max(hdr, 0.0), 0.0) * uSdrWhiteNits;
+                // Relative to diffuse white: 1.0 is SDR white, higher values are the highlights
+                // the gain map recovers.
+                vec3 wide = max(uToBt2020 * max(hdr, 0.0), 0.0);
 
-                gl_FragColor = vec4(pqFromNits(wide.r), pqFromNits(wide.g), pqFromNits(wide.b), 1.0);
+                gl_FragColor = vec4(encode(wide.r), encode(wide.g), encode(wide.b), 1.0);
             }
         """.trimIndent()
     }

@@ -2,6 +2,7 @@ package nl.giejay.android.tv.immich.shared.util
 
 import android.content.Context
 import nl.giejay.android.tv.immich.shared.prefs.HdrImageMode
+import nl.giejay.mediaslider.hdr.EglHdrCapabilities
 
 /**
  * Which of the two HDR photo paths this device should use, if either.
@@ -19,21 +20,34 @@ data class HdrImagePlan(
     val mode: HdrImageMode,
     val capabilities: HdrCapabilities,
     val useWindowColorMode: Boolean,
-    val useHdrSurface: Boolean
+    val useHdrSurface: Boolean,
+    val hdrLayerSupported: Boolean
 ) {
     /** One line for the debug screen explaining what will be attempted and why. */
     fun describe(): String = when {
         useWindowColorMode -> "window HDR colour mode (the display reports headroom for app content)"
-        useHdrSurface -> "BT.2020 PQ surface (the display does HDR for video layers only)"
+        useHdrSurface -> "BT.2020 HDR layer (the display does HDR for video layers only)"
         mode == HdrImageMode.OFF -> "nothing - HDR photos are set to Off"
+        capabilities.canUseHdrVideoLayer && !hdrLayerSupported ->
+            "nothing - the display would take an HDR layer, but this GPU cannot produce one"
         else -> "nothing - ${capabilities.ultraHdrVerdict()}"
     }
 
     companion object {
         fun of(context: Context, mode: HdrImageMode): HdrImagePlan =
-            of(mode, HdrCapabilities.of(context))
+            of(mode, HdrCapabilities.of(context), EglHdrCapabilities.probe().usable)
 
-        fun of(mode: HdrImageMode, capabilities: HdrCapabilities): HdrImagePlan {
+        /**
+         * [hdrLayerSupported] is whether the GPU can actually produce an HDR layer. It gates the
+         * surface path on purpose: making a SurfaceView visible only to find out it cannot work
+         * still makes the display renegotiate, which costs the Dolby Vision handshake of whatever
+         * plays next.
+         */
+        fun of(
+            mode: HdrImageMode,
+            capabilities: HdrCapabilities,
+            hdrLayerSupported: Boolean = true
+        ): HdrImagePlan {
             val window: Boolean
             val surface: Boolean
             when (mode) {
@@ -47,14 +61,14 @@ data class HdrImagePlan(
                 }
                 HdrImageMode.HDR_SURFACE -> {
                     window = false
-                    surface = capabilities.canUseHdrVideoLayer
+                    surface = capabilities.canUseHdrVideoLayer && hdrLayerSupported
                 }
                 HdrImageMode.AUTO -> {
                     window = capabilities.ultraHdrImagesSupported
-                    surface = !window && capabilities.canUseHdrVideoLayer
+                    surface = !window && capabilities.canUseHdrVideoLayer && hdrLayerSupported
                 }
             }
-            return HdrImagePlan(mode, capabilities, window, surface)
+            return HdrImagePlan(mode, capabilities, window, surface, hdrLayerSupported)
         }
     }
 }

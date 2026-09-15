@@ -2,6 +2,7 @@ package nl.giejay.mediaslider.hdr
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.hardware.DataSpace
 import android.opengl.EGL14
 import android.opengl.EGLConfig
 import android.opengl.EGLContext
@@ -11,25 +12,29 @@ import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.AttributeSet
+import android.view.SurfaceControl
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import androidx.annotation.RequiresApi
+import nl.giejay.mediaslider.hdr.EglHdrCapabilities.HdrTagging
 import timber.log.Timber
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /**
- * Shows an Ultra HDR photo on a 10-bit BT.2020 PQ surface.
+ * Shows an Ultra HDR photo on a 10-bit BT.2020 surface.
  *
  * This is the way to get HDR stills onto a TV box. A TV's display pipeline does not give app
  * windows any headroom above SDR white - `Window.setColorMode(COLOR_MODE_HDR)` is a no-op there -
  * but it does switch the HDMI output into HDR whenever a layer arrives tagged as HDR, which is how
  * video gets its Dolby Vision / HDR10 output. So instead of asking the window for headroom, the
- * photo is rendered into its own surface tagged `EGL_GL_COLORSPACE_BT2020_PQ_EXT`, exactly the kind
- * of layer the compositor already knows how to put on screen in HDR.
+ * photo is rendered into its own surface that announces itself the same way a video layer does.
  *
- * The view is inert until [setImage] is given a bitmap with a gain map. Any failure (no 10-bit
- * config, no PQ colour space extension, a shader that will not compile) reports through
+ * How that announcement is made depends on the driver, see [EglHdrCapabilities]: an EGL surface
+ * created in a BT.2020 colour space where the extension exists, otherwise an ordinary 10-bit
+ * surface whose layer is tagged with `SurfaceControl.Transaction.setDataSpace`.
+ *
+ * The view is inert until [setImage] is given a bitmap with a gain map. Any failure reports through
  * [onUnavailable] so the caller can fall back to the ordinary SDR image view.
  */
 class HdrImageSurfaceView @JvmOverloads constructor(
@@ -51,6 +56,7 @@ class HdrImageSurfaceView @JvmOverloads constructor(
     private var session: GlSession? = null
     private var surfaceWidth = 0
     private var surfaceHeight = 0
+    private var tagging = HdrTagging.NONE
 
     init {
         holder.addCallback(this)
@@ -74,7 +80,13 @@ class HdrImageSurfaceView @JvmOverloads constructor(
         val thread = HandlerThread("hdr-image-gl").apply { start() }
         this.thread = thread
         handler = Handler(thread.looper)
-        handler?.post { createSession(holder) }
+        // The layer tag has to be applied from the main thread's SurfaceControl, before any
+        // buffer is posted, so the compositor sees the first frame as HDR.
+        tagging = EglHdrCapabilities.probe().preferredTagging()
+        if (tagging == HdrTagging.SURFACE_CONTROL_PQ) {
+            tagLayerAsPq()
+        }
+        handler?.post { createSession(holder, tagging) }
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
@@ -102,12 +114,28 @@ class HdrImageSurfaceView @JvmOverloads constructor(
         this.handler = null
     }
 
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    private fun tagLayerAsPq() {
+        val control = surfaceControl
+        if (control == null || !control.isValid) {
+            Timber.w("No SurfaceControl to tag as HDR")
+            return
+        }
+        val dataSpace = DataSpace.pack(
+            DataSpace.STANDARD_BT2020, DataSpace.TRANSFER_ST2084, DataSpace.RANGE_FULL
+        )
+        SurfaceControl.Transaction().use { transaction ->
+            transaction.setDataSpace(control, dataSpace).apply()
+        }
+        Timber.i("Tagged the photo layer as BT.2020 PQ")
+    }
+
     // --- GL thread ---
 
-    private fun createSession(holder: SurfaceHolder) {
+    private fun createSession(holder: SurfaceHolder, tagging: HdrTagging) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return
         try {
-            session = GlSession.create(holder)
+            session = GlSession.create(holder, tagging)
             renderOnGlThread()
         } catch (e: Exception) {
             Timber.w(e, "Could not start the HDR surface")
@@ -123,6 +151,11 @@ class HdrImageSurfaceView @JvmOverloads constructor(
         if (surfaceWidth <= 0 || surfaceHeight <= 0) return
         try {
             session.render(bitmap, surfaceWidth, surfaceHeight, weight)
+            if (tagging == HdrTagging.SURFACE_CONTROL_PQ) {
+                // Again after the frame: the buffer that just arrived from the BufferQueue carries
+                // its own dataspace, which can override the tag set before any buffer existed.
+                post { tagLayerAsPq() }
+            }
         } catch (e: Exception) {
             Timber.w(e, "Could not render the HDR photo")
             destroySession()
@@ -141,13 +174,14 @@ class HdrImageSurfaceView @JvmOverloads constructor(
         post { onUnavailable?.invoke(reason) }
     }
 
-    /** EGL context bound to the view's surface with a BT.2020 PQ colour space. */
+    /** EGL context bound to the view's surface, producing BT.2020 HDR frames. */
     @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     private class GlSession(
         private val display: EGLDisplay,
         private val context: EGLContext,
         private val surface: EGLSurface,
-        private val renderer: UltraHdrGlRenderer
+        private val renderer: UltraHdrGlRenderer,
+        private val usePq: Boolean
     ) {
         private var uploadedBitmap: Bitmap? = null
 
@@ -162,7 +196,7 @@ class HdrImageSurfaceView @JvmOverloads constructor(
                 }
                 uploadedBitmap = bitmap
             }
-            renderer.draw(bitmap, width, height, weight)
+            renderer.draw(bitmap, width, height, weight, usePq)
             EGL14.eglSwapBuffers(display, surface)
             HdrSurfaceStatus.lastFailure = null
             HdrSurfaceStatus.active = true
@@ -192,16 +226,12 @@ class HdrImageSurfaceView @JvmOverloads constructor(
 
         companion object {
             @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-            fun create(holder: SurfaceHolder): GlSession {
+            fun create(holder: SurfaceHolder, tagging: HdrTagging): GlSession {
+                check(tagging != HdrTagging.NONE) { "This device cannot present an HDR layer" }
                 val display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
                 check(display != EGL14.EGL_NO_DISPLAY) { "No EGL display" }
                 val version = IntArray(2)
                 check(EGL14.eglInitialize(display, version, 0, version, 1)) { "eglInitialize failed" }
-
-                val extensions = EGL14.eglQueryString(display, EGL14.EGL_EXTENSIONS).orEmpty()
-                check(extensions.contains(EXT_COLORSPACE_BT2020_PQ)) {
-                    "This device's GPU driver has no $EXT_COLORSPACE_BT2020_PQ"
-                }
 
                 val config = chooseTenBitConfig(display)
                 val context = EGL14.eglCreateContext(
@@ -211,11 +241,10 @@ class HdrImageSurfaceView @JvmOverloads constructor(
                 check(context != EGL14.EGL_NO_CONTEXT) { "eglCreateContext failed: ${EGL14.eglGetError()}" }
 
                 val surface = EGL14.eglCreateWindowSurface(
-                    display, config, holder.surface,
-                    intArrayOf(EGL_GL_COLORSPACE_KHR, EGL_GL_COLORSPACE_BT2020_PQ_EXT, EGL14.EGL_NONE), 0
+                    display, config, holder.surface, surfaceAttributes(tagging), 0
                 )
                 check(surface != EGL14.EGL_NO_SURFACE) {
-                    "Could not create a BT.2020 PQ surface: ${EGL14.eglGetError()}"
+                    "Could not create a 10-bit HDR surface ($tagging): ${EGL14.eglGetError()}"
                 }
 
                 check(EGL14.eglMakeCurrent(display, surface, surface, context)) {
@@ -223,7 +252,20 @@ class HdrImageSurfaceView @JvmOverloads constructor(
                 }
                 val renderer = UltraHdrGlRenderer()
                 renderer.setUp()
-                return GlSession(display, context, surface, renderer)
+                Timber.i("HDR photo surface ready using %s", tagging)
+                return GlSession(display, context, surface, renderer, usePq = tagging != HdrTagging.EGL_HLG)
+            }
+
+            /**
+             * With a colour space extension the surface itself is tagged; with layer tagging the
+             * surface is an ordinary one and `setDataSpace` has already labelled the layer.
+             */
+            private fun surfaceAttributes(tagging: HdrTagging): IntArray = when (tagging) {
+                HdrTagging.EGL_PQ ->
+                    intArrayOf(EGL_GL_COLORSPACE_KHR, EGL_GL_COLORSPACE_BT2020_PQ_EXT, EGL14.EGL_NONE)
+                HdrTagging.EGL_HLG ->
+                    intArrayOf(EGL_GL_COLORSPACE_KHR, EGL_GL_COLORSPACE_BT2020_HLG_EXT, EGL14.EGL_NONE)
+                else -> intArrayOf(EGL14.EGL_NONE)
             }
 
             private fun chooseTenBitConfig(display: EGLDisplay): EGLConfig {
@@ -249,7 +291,7 @@ class HdrImageSurfaceView @JvmOverloads constructor(
     private companion object {
         const val EGL_GL_COLORSPACE_KHR = 0x309D
         const val EGL_GL_COLORSPACE_BT2020_PQ_EXT = 0x3340
-        const val EXT_COLORSPACE_BT2020_PQ = "EGL_EXT_gl_colorspace_bt2020_pq"
+        const val EGL_GL_COLORSPACE_BT2020_HLG_EXT = 0x3540
         const val RELEASE_TIMEOUT_SECONDS = 2L
     }
 }

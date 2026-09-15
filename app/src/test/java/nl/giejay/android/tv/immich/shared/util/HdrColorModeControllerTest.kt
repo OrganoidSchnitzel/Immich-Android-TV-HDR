@@ -140,6 +140,27 @@ class HdrColorModeControllerTest {
     }
 
     @Test
+    fun `a gpu that cannot produce an hdr layer never gets a surface`() {
+        // The display would take an HDR layer; the driver cannot make one. Creating the surface
+        // anyway would cost the next video its Dolby Vision handshake for nothing.
+        val plan = HdrImagePlan.of(HdrImageMode.AUTO, tvDisplay(), hdrLayerSupported = false)
+
+        assertFalse(plan.useWindowColorMode)
+        assertFalse(plan.useHdrSurface)
+        assertTrue(plan.describe().contains("this GPU cannot produce one"))
+    }
+
+    @Test
+    fun `forcing the layer path still respects what the gpu can do`() {
+        assertFalse(
+            HdrImagePlan.of(HdrImageMode.HDR_SURFACE, tvDisplay(), hdrLayerSupported = false).useHdrSurface
+        )
+        assertTrue(
+            HdrImagePlan.of(HdrImageMode.HDR_SURFACE, tvDisplay(), hdrLayerSupported = true).useHdrSurface
+        )
+    }
+
+    @Test
     fun `forcing the window path on a tv is possible but never also enables the layer path`() {
         val plan = HdrImagePlan.of(HdrImageMode.WINDOW_HDR, tvDisplay())
 
