@@ -83,10 +83,11 @@ class HdrImageSurfaceView @JvmOverloads constructor(
         // The layer tag has to be applied from the main thread's SurfaceControl, before any
         // buffer is posted, so the compositor sees the first frame as HDR.
         tagging = EglHdrCapabilities.probe().preferredTagging()
-        if (tagging == HdrTagging.SURFACE_CONTROL_PQ) {
-            tagLayerAsPq()
+        val control = if (tagging == HdrTagging.SURFACE_CONTROL_PQ) surfaceControl else null
+        if (control != null) {
+            tagLayerAsPq(control)
         }
-        handler?.post { createSession(holder, tagging) }
+        handler?.post { createSession(holder, tagging, control) }
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
@@ -114,28 +115,26 @@ class HdrImageSurfaceView @JvmOverloads constructor(
         this.handler = null
     }
 
+    /** Label the layer before the first buffer so the compositor sees it as HDR from the start. */
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-    private fun tagLayerAsPq() {
-        val control = surfaceControl
-        if (control == null || !control.isValid) {
-            Timber.w("No SurfaceControl to tag as HDR")
+    private fun tagLayerAsPq(control: SurfaceControl) {
+        if (!control.isValid) {
+            Timber.w("No valid SurfaceControl to tag as HDR")
             return
         }
         val dataSpace = DataSpace.pack(
             DataSpace.STANDARD_BT2020, DataSpace.TRANSFER_ST2084, DataSpace.RANGE_FULL
         )
-        SurfaceControl.Transaction().use { transaction ->
-            transaction.setDataSpace(control, dataSpace).apply()
-        }
+        SurfaceControl.Transaction().use { it.setDataSpace(control, dataSpace).apply() }
         Timber.i("Tagged the photo layer as BT.2020 PQ")
     }
 
     // --- GL thread ---
 
-    private fun createSession(holder: SurfaceHolder, tagging: HdrTagging) {
+    private fun createSession(holder: SurfaceHolder, tagging: HdrTagging, control: SurfaceControl?) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return
         try {
-            session = GlSession.create(holder, tagging)
+            session = GlSession.create(holder, tagging, control)
             renderOnGlThread()
         } catch (e: Exception) {
             Timber.w(e, "Could not start the HDR surface")
@@ -151,11 +150,6 @@ class HdrImageSurfaceView @JvmOverloads constructor(
         if (surfaceWidth <= 0 || surfaceHeight <= 0) return
         try {
             session.render(bitmap, surfaceWidth, surfaceHeight, weight)
-            if (tagging == HdrTagging.SURFACE_CONTROL_PQ) {
-                // Again after the frame: the buffer that just arrived from the BufferQueue carries
-                // its own dataspace, which can override the tag set before any buffer existed.
-                post { tagLayerAsPq() }
-            }
         } catch (e: Exception) {
             Timber.w(e, "Could not render the HDR photo")
             destroySession()
@@ -181,7 +175,8 @@ class HdrImageSurfaceView @JvmOverloads constructor(
         private val context: EGLContext,
         private val surface: EGLSurface,
         private val renderer: UltraHdrGlRenderer,
-        private val usePq: Boolean
+        private val tagging: HdrTagging,
+        private val layerToTag: SurfaceControl?
     ) {
         private var uploadedBitmap: Bitmap? = null
 
@@ -196,10 +191,13 @@ class HdrImageSurfaceView @JvmOverloads constructor(
                 }
                 uploadedBitmap = bitmap
             }
-            renderer.draw(bitmap, width, height, weight, usePq)
+            renderer.draw(bitmap, width, height, weight, usePq = tagging != HdrTagging.EGL_HLG)
             EGL14.eglSwapBuffers(display, surface)
-            HdrSurfaceStatus.lastFailure = null
-            HdrSurfaceStatus.active = true
+            // Again after the frame, on this thread: the buffer that just went through the
+            // BufferQueue carries its own dataspace, which would otherwise replace the tag set
+            // before any buffer existed.
+            layerToTag?.let(::tagAsPq)
+            HdrSurfaceStatus.recordRender(tagging.name)
         }
 
         fun release() {
@@ -224,9 +222,18 @@ class HdrImageSurfaceView @JvmOverloads constructor(
             runCatching { makeCurrent() }
         }
 
+        @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+        private fun tagAsPq(control: SurfaceControl) {
+            if (!control.isValid) return
+            val dataSpace = DataSpace.pack(
+                DataSpace.STANDARD_BT2020, DataSpace.TRANSFER_ST2084, DataSpace.RANGE_FULL
+            )
+            SurfaceControl.Transaction().use { it.setDataSpace(control, dataSpace).apply() }
+        }
+
         companion object {
             @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-            fun create(holder: SurfaceHolder, tagging: HdrTagging): GlSession {
+            fun create(holder: SurfaceHolder, tagging: HdrTagging, layerToTag: SurfaceControl?): GlSession {
                 check(tagging != HdrTagging.NONE) { "This device cannot present an HDR layer" }
                 val display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
                 check(display != EGL14.EGL_NO_DISPLAY) { "No EGL display" }
@@ -253,7 +260,7 @@ class HdrImageSurfaceView @JvmOverloads constructor(
                 val renderer = UltraHdrGlRenderer()
                 renderer.setUp()
                 Timber.i("HDR photo surface ready using %s", tagging)
-                return GlSession(display, context, surface, renderer, usePq = tagging != HdrTagging.EGL_HLG)
+                return GlSession(display, context, surface, renderer, tagging, layerToTag)
             }
 
             /**

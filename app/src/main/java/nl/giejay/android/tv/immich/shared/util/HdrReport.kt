@@ -9,6 +9,7 @@ import nl.giejay.android.tv.immich.shared.prefs.SLIDER_MAX_CUT_OFF_HEIGHT
 import nl.giejay.android.tv.immich.shared.prefs.SLIDER_MAX_CUT_OFF_WIDTH
 import nl.giejay.android.tv.immich.shared.prefs.SLIDER_ONLY_USE_THUMBNAILS
 import nl.giejay.mediaslider.hdr.EglHdrCapabilities
+import nl.giejay.mediaslider.transformations.GlideTransformations
 import nl.giejay.mediaslider.hdr.HdrSurfaceStatus
 import nl.giejay.mediaslider.util.HdrDiagnostics
 
@@ -24,6 +25,7 @@ object HdrReport {
         val forceOriginal = PreferenceManager.get(SLIDER_FORCE_ORIGINAL_VIDEO)
         val thumbnailsOnly = PreferenceManager.get(SLIDER_ONLY_USE_THUMBNAILS)
         val plan = HdrImagePlan.of(PreferenceManager.get(SLIDER_HDR_IMAGE_MODE), capabilities)
+        val transformation = PreferenceManager.get(SLIDER_GLIDE_TRANSFORMATION)
 
         val sections = listOf(
             "DISPLAY" to capabilities.lines(),
@@ -42,7 +44,9 @@ object HdrReport {
                     "off - videos play the server's transcode, which is SDR",
                 // Not HDR, but it decides how much of a photo is cut away, which is the other
                 // thing that makes a photo look wrong on screen.
-                "Photo transformation" to PreferenceManager.get(SLIDER_GLIDE_TRANSFORMATION).name,
+                "Photo transformation" to if (transformation == GlideTransformations.CENTER_CROP)
+                    "CENTER_CROP - crops every photo to the screen's shape"
+                else transformation.name,
                 "Max cut-off" to "${PreferenceManager.get(SLIDER_MAX_CUT_OFF_WIDTH)}% wide, " +
                     "${PreferenceManager.get(SLIDER_MAX_CUT_OFF_HEIGHT)}% high"
             ),
@@ -78,6 +82,9 @@ object HdrReport {
         plan.useHdrSurface && HdrSurfaceStatus.lastFailure != null ->
             "The HDR photo layer could not be used: ${HdrSurfaceStatus.lastFailure}. " +
                 "Photos fall back to SDR; HDR videos are unaffected."
-        else -> "HDR photos should work here. If one still looks flat, check the gain map line above."
+        else ->
+            "HDR photos should work here. A photo that looks normal but flat means the HDR layer " +
+                "was not used; one that looks very dark or washed out means the layer was drawn " +
+                "but the TV did not switch its output into HDR."
     }
 }

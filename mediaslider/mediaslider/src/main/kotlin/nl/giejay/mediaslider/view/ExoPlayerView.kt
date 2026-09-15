@@ -12,6 +12,7 @@ import androidx.annotation.OptIn
 import android.view.SurfaceView
 import android.view.TextureView
 import androidx.media3.common.Format
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -193,8 +194,11 @@ class ExoPlayerView @JvmOverloads constructor(context: Context, resourceId: Int,
             null -> "no color info (assume SDR)"
             else -> "transfer ${colorInfo.colorTransfer}"
         }
-        return "${format.sampleMimeType ?: "?"} ${format.codecs ?: ""} " +
-            "${format.width}x${format.height} - $range"
+        // A Dolby Vision profile 8 stream is carried on an HLG or PQ base layer, so the transfer
+        // alone reads like a fallback when it is nothing of the sort. Say which it is.
+        val mime = format.sampleMimeType ?: "?"
+        val kind = if (mime == MimeTypes.VIDEO_DOLBY_VISION) "Dolby Vision on a $range base layer" else range
+        return "$mime ${format.codecs ?: ""} ${format.width}x${format.height} - $kind"
     }
 
     @OptIn(UnstableApi::class)
