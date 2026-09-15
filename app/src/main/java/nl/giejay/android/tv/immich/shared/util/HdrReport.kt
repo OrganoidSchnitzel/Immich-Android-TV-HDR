@@ -32,7 +32,7 @@ object HdrReport {
             "GPU" to EglHdrCapabilities.probe().let { egl ->
                 listOf(
                     "Can produce an HDR layer" to egl.describe(),
-                    "Colour space extensions" to egl.colorSpaceExtensions()
+                    "HDR-related extensions" to egl.hdrExtensions()
                 )
             },
             "SETTINGS" to listOf(

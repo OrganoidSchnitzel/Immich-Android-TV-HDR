@@ -18,7 +18,7 @@ object HdrSurfaceStatus {
     var photosDrawn: Int = 0
         private set
 
-    /** How the layer announced itself as HDR, e.g. EGL_PQ or SURFACE_CONTROL_PQ. */
+    /** How the layer announced itself as HDR, e.g. EGL_PQ or PRODUCER_PQ. */
     @Volatile
     var method: String? = null
         private set

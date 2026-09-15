@@ -21,19 +21,19 @@ class EglHdrCapabilitiesTest {
     }
 
     @Test
-    fun `without the extension the layer is tagged instead`() {
-        // The Homatics/SEI box: no EGL colour space extensions at all, but Android 13+ layer
-        // tagging is still available.
+    fun `without the extension the frames are produced with a data space instead`() {
+        // The Homatics/SEI box: no EGL colour space extensions at all, so the frames have to
+        // carry the data space themselves.
         val driver = capabilities(dataSpace = true)
 
         assertTrue(driver.usable)
-        assertEquals(HdrTagging.SURFACE_CONTROL_PQ, driver.preferredTagging())
+        assertEquals(HdrTagging.PRODUCER_PQ, driver.preferredTagging())
     }
 
     @Test
-    fun `layer tagging beats the hlg colour space because hlg clips highlights`() {
+    fun `producing the frames beats the hlg colour space because hlg clips highlights`() {
         assertEquals(
-            HdrTagging.SURFACE_CONTROL_PQ,
+            HdrTagging.PRODUCER_PQ,
             capabilities(hlg = true, dataSpace = true).preferredTagging()
         )
     }
@@ -53,13 +53,19 @@ class EglHdrCapabilitiesTest {
     }
 
     @Test
-    fun `colour space extensions are picked out of the driver's extension string`() {
+    fun `hdr related extensions are picked out of the driver's extension string`() {
         val driver = EglHdrCapabilities(
-            tenBitConfig = true, pqColorSpace = false, hlgColorSpace = false, dataSpaceTagging = true,
-            extensions = "EGL_KHR_image_base EGL_EXT_gl_colorspace_display_p3 EGL_ANDROID_recordable"
+            tenBitConfig = true, pqColorSpace = false, hlgColorSpace = false, producerDataSpace = true,
+            extensions = "EGL_KHR_image_base EGL_EXT_gl_colorspace_display_p3 " +
+                "EGL_EXT_surface_SMPTE2086_metadata EGL_ANDROID_recordable"
         )
 
-        assertEquals("EGL_EXT_gl_colorspace_display_p3", driver.colorSpaceExtensions())
-        assertEquals("none", capabilities(dataSpace = true).colorSpaceExtensions())
+        // Metadata extensions matter as much as colour spaces for whether a TV switches output,
+        // so they must not be filtered out of the report.
+        assertEquals(
+            "EGL_EXT_gl_colorspace_display_p3, EGL_EXT_surface_SMPTE2086_metadata",
+            driver.hdrExtensions()
+        )
+        assertEquals("none", capabilities(dataSpace = true).hdrExtensions())
     }
 }

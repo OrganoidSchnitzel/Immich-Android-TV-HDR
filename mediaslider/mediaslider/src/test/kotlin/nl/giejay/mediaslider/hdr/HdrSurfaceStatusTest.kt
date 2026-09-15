@@ -18,14 +18,14 @@ class HdrSurfaceStatusTest {
         val before = HdrSurfaceStatus.describe()
         assertTrue(before, before.startsWith("never used") || before.startsWith("yes"))
 
-        HdrSurfaceStatus.recordRender("SURFACE_CONTROL_PQ")
-        assertTrue(HdrSurfaceStatus.describe().startsWith("yes - a SURFACE_CONTROL_PQ layer is on screen now"))
+        HdrSurfaceStatus.recordRender("PRODUCER_PQ")
+        assertTrue(HdrSurfaceStatus.describe().startsWith("yes - a PRODUCER_PQ layer is on screen now"))
 
         // The layer is torn down when the photo leaves the screen; that must still report success.
         HdrSurfaceStatus.active = false
         val after = HdrSurfaceStatus.describe()
         assertTrue(after, after.startsWith("yes -"))
-        assertTrue(after, after.contains("SURFACE_CONTROL_PQ"))
+        assertTrue(after, after.contains("PRODUCER_PQ"))
     }
 
     @Test

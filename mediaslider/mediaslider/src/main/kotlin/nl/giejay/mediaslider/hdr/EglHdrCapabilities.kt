@@ -26,20 +26,20 @@ data class EglHdrCapabilities(
     val tenBitConfig: Boolean,
     val pqColorSpace: Boolean,
     val hlgColorSpace: Boolean,
-    val dataSpaceTagging: Boolean,
+    val producerDataSpace: Boolean,
     val extensions: String
 ) {
     /** True when at least one way of producing an HDR layer is available. */
     val usable: Boolean
-        get() = tenBitConfig && (pqColorSpace || hlgColorSpace || dataSpaceTagging)
+        get() = tenBitConfig && (pqColorSpace || hlgColorSpace || producerDataSpace)
 
     /** How the surface should announce itself as HDR, best first. */
     fun preferredTagging(): HdrTagging = when {
         !tenBitConfig -> HdrTagging.NONE
         pqColorSpace -> HdrTagging.EGL_PQ
-        // Tagging the layer beats the HLG colour space: HLG clips the gain map's brightest
-        // highlights, PQ carries all of them.
-        dataSpaceTagging -> HdrTagging.SURFACE_CONTROL_PQ
+        // Producing the buffers ourselves beats the HLG colour space: HLG clips the gain map's
+        // brightest highlights, PQ carries all of them.
+        producerDataSpace -> HdrTagging.PRODUCER_PQ
         hlgColorSpace -> HdrTagging.EGL_HLG
         else -> HdrTagging.NONE
     }
@@ -49,17 +49,41 @@ data class EglHdrCapabilities(
         else -> "yes, via ${preferredTagging()}"
     }
 
-    /** The colour-space extensions the driver reports, for the debug screen. */
-    fun colorSpaceExtensions(): String {
-        val relevant = extensions.split(' ').filter { it.contains("colorspace", ignoreCase = true) }
+    /**
+     * The driver extensions that have any bearing on HDR. Deliberately wider than colour spaces:
+     * HDR static metadata extensions decide whether some TV pipelines switch their output at all,
+     * and a filter narrow enough to hide them hides the answer.
+     */
+    fun hdrExtensions(): String {
+        val relevant = extensions.split(' ').filter { extension ->
+            HDR_EXTENSION_HINTS.any { extension.contains(it, ignoreCase = true) }
+        }
         return if (relevant.isEmpty()) "none" else relevant.joinToString(", ")
     }
 
-    enum class HdrTagging { NONE, EGL_PQ, EGL_HLG, SURFACE_CONTROL_PQ }
+    enum class HdrTagging {
+        NONE,
+
+        /** EGL tags every buffer, because the driver has the BT.2020 PQ colour space extension. */
+        EGL_PQ,
+
+        /** As above for BT.2020 HLG. */
+        EGL_HLG,
+
+        /**
+         * No driver extension: render offscreen and hand the frames to the surface through an
+         * [android.media.ImageWriter] whose data space says BT.2020 PQ. The buffer's own data
+         * space is what the compositor reads, the same way a video decoder's output is read, so
+         * unlike a layer-level tag nothing overwrites it when the frame is queued.
+         */
+        PRODUCER_PQ
+    }
 
     companion object {
         private const val EXT_PQ = "EGL_EXT_gl_colorspace_bt2020_pq"
         private const val EXT_HLG = "EGL_EXT_gl_colorspace_bt2020_hlg"
+        private val HDR_EXTENSION_HINTS =
+            listOf("colorspace", "hdr", "smpte", "cta861", "2086", "pq", "hlg", "bt2020")
 
         @Volatile
         private var cached: EglHdrCapabilities? = null
@@ -91,11 +115,13 @@ data class EglHdrCapabilities(
                 tenBitConfig = hasTenBitConfig(display),
                 pqColorSpace = extensions.contains(EXT_PQ),
                 hlgColorSpace = extensions.contains(EXT_HLG),
-                dataSpaceTagging = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU,
+                // ImageWriter.Builder gained setDataSpace in Android 14.
+                producerDataSpace = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE,
                 extensions = extensions
             )
-            Timber.i("HDR layer support: %s (colour space extensions: %s)",
-                capabilities.describe(), capabilities.colorSpaceExtensions())
+            Timber.i("HDR layer support: %s (HDR extensions: %s)",
+                capabilities.describe(), capabilities.hdrExtensions())
+            Timber.i("Full EGL extension list: %s", extensions)
             return capabilities
         }
 
