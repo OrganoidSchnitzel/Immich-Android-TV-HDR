@@ -83,7 +83,18 @@ object HdrReport {
                 "HDR videos are unaffected."
         plan.useHdrSurface && HdrSurfaceStatus.lastFailure != null ->
             "The HDR photo layer could not be used: ${HdrSurfaceStatus.lastFailure}. " +
-                "Photos fall back to SDR; HDR videos are unaffected."
+                "What you are looking at is the ordinary SDR view, which is why it looks normal. " +
+                "HDR videos are unaffected."
+        // "Looks normal" means opposite things depending on which of these two it is, so say
+        // which one it is rather than leaving it to be worked out from the photo.
+        plan.useHdrSurface && HdrSurfaceStatus.photosDrawn == 0 ->
+            "No photo has reached the HDR layer yet, so what is on screen is the ordinary SDR " +
+                "view. Open an Ultra HDR photo first, then come back here."
+        plan.useHdrSurface ->
+            "The last photo WAS drawn on a ${HdrSurfaceStatus.method} HDR layer. So if it looked " +
+                "normal, the TV switched its output into HDR and this is working; if it looked " +
+                "grey or washed out, the TV stayed in SDR and this mechanism is not the one it " +
+                "acts on. Try another under HDR layer method."
         else ->
             "HDR photos should work here. A photo that looks normal but flat means the HDR layer " +
                 "was not used; one that looks very dark or washed out means the layer was drawn " +
