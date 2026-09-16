@@ -2,8 +2,9 @@ package nl.giejay.mediaslider.hdr
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.PixelFormat
 import android.hardware.DataSpace
+import android.hardware.HardwareBuffer
+import android.media.Image
 import android.media.ImageWriter
 import android.opengl.EGL14
 import android.opengl.EGLConfig
@@ -68,11 +69,6 @@ class HdrImageSurfaceView @JvmOverloads constructor(
     var forcedTagging: HdrTagging? = null
 
     init {
-        // Ask for the 10-bit format up front. The EGL paths would set it anyway, and it lets the
-        // ImageWriter path take the surface's own format rather than naming one - naming
-        // RGBA_1010102 is rejected outright, because the (format, data space) pair has no public
-        // ImageFormat to map onto.
-        holder.setFormat(PixelFormat.RGBA_1010102)
         holder.addCallback(this)
     }
 
@@ -234,33 +230,27 @@ class HdrImageSurfaceView @JvmOverloads constructor(
             val writer = imageWriter!!
             val image = writer.dequeueInputImage()
             try {
-                image.dataSpace = BT2020_PQ
-                copyFlipped(pixels, image.planes[0].buffer, image.planes[0].rowStride, width, height)
+                image.dataSpace = BT2020_PQ_LIMITED
+                val planes = image.planes
+                check(planes.size >= 3) { "Expected three P010 planes, got ${planes.size}" }
+                P010Converter.convert(
+                    pixels, width, height,
+                    luma = planes[0].toConverterPlane(),
+                    chromaBlue = planes[1].toConverterPlane(),
+                    chromaRed = planes[2].toConverterPlane()
+                )
                 writer.queueInputImage(image)
             } catch (e: Exception) {
                 image.close()
                 throw e
             }
             layerToTag?.takeIf { it.isValid }?.let { control ->
-                SurfaceControl.Transaction().use { it.setDataSpace(control, BT2020_PQ).apply() }
+                SurfaceControl.Transaction().use { it.setDataSpace(control, BT2020_PQ_LIMITED).apply() }
             }
         }
 
-        /**
-         * Copies a GL read-back into an [android.media.Image] plane. GL numbers rows from the
-         * bottom of the frame and the image plane from the top, so the rows are reversed on the
-         * way across; [rowStride] can be wider than the frame, hence the row-at-a-time copy.
-         */
-        private fun copyFlipped(source: ByteBuffer, destination: ByteBuffer, rowStride: Int, width: Int, height: Int) {
-            val rowBytes = width * BYTES_PER_PIXEL
-            for (row in 0 until height) {
-                source.limit((height - row) * rowBytes)
-                source.position((height - row - 1) * rowBytes)
-                destination.position(row * rowStride)
-                destination.put(source)
-            }
-            source.clear()
-        }
+        private fun Image.Plane.toConverterPlane() =
+            P010Converter.Plane(buffer, rowStride, pixelStride)
 
         private fun prepareTarget(width: Int, height: Int) {
             if (offscreen != null && width == targetWidth && height == targetHeight) return
@@ -280,7 +270,16 @@ class HdrImageSurfaceView @JvmOverloads constructor(
             // view already set to RGBA_1010102. Naming the format instead throws, because
             // (RGBA_1010102, BT.2020 PQ) has no public ImageFormat to be mapped onto. The data
             // space is set per image below, which is what reaches the buffer.
-            imageWriter = ImageWriter.newInstance(holder.surface, MAX_IMAGES)
+            // P010, not RGBA_1010102: ImageWriter cannot hand out 10-bit RGB images at all,
+            // because the platform's plane-count table has no entry for that format and throws
+            // before a frame exists. P010 is the one 10-bit format it knows - and it is what a
+            // video decoder emits, which is the layer shape this display switches into HDR for.
+            imageWriter = ImageWriter.Builder(holder.surface)
+                .setHardwareBufferFormat(HardwareBuffer.YCBCR_P010)
+                .setDataSpace(BT2020_PQ_LIMITED)
+                .setWidthAndHeight(width, height)
+                .setMaxImages(MAX_IMAGES)
+                .build()
         }
 
         private fun upload(bitmap: Bitmap): Boolean {
@@ -467,9 +466,16 @@ class HdrImageSurfaceView @JvmOverloads constructor(
         const val BYTES_PER_PIXEL = 4
         const val MAX_IMAGES = 2
 
+        /** Full range, for the RGB surfaces EGL produces. */
         @RequiresApi(Build.VERSION_CODES.TIRAMISU)
         val BT2020_PQ: Int = DataSpace.pack(
             DataSpace.STANDARD_BT2020, DataSpace.TRANSFER_ST2084, DataSpace.RANGE_FULL
+        )
+
+        /** Limited range, which is what P010 video carries and what the converter writes. */
+        @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+        val BT2020_PQ_LIMITED: Int = DataSpace.pack(
+            DataSpace.STANDARD_BT2020, DataSpace.TRANSFER_ST2084, DataSpace.RANGE_LIMITED
         )
     }
 }

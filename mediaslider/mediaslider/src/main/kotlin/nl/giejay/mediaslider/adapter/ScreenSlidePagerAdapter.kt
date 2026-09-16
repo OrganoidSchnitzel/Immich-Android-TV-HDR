@@ -48,6 +48,10 @@ class ScreenSlidePagerAdapter(private val context: Context,
     private var hdrSurfacePosition: Int? = null
     private var hdrSurfaceGaveUp = false
     private val failedPositions = mutableSetOf<String>()
+    // How many videos have failed on a SurfaceView. Each failure costs a decoder init, a release
+    // and a full pager rebuild, so after a couple of them the SurfaceView is abandoned for the
+    // rest of the session rather than paid for again on every remaining video.
+    private var surfaceViewFailures = 0
 
     fun setItems(items: List<SliderItemViewHolder>) {
         this.items = items
@@ -87,7 +91,9 @@ class ScreenSlidePagerAdapter(private val context: Context,
             // and put everything else on the SurfaceView. An orientation the server did not report
             // now counts as "not rotated": treating it as portrait sent every video without
             // rotation metadata down the SDR path.
-            val useTextureView = isRotated(model.mainItem.orientation) || failedPositions.contains(model.url)
+            val useTextureView = isRotated(model.mainItem.orientation) ||
+                    failedPositions.contains(model.url) ||
+                    surfaceViewFailures >= MAX_SURFACE_VIEW_FAILURES
             view = ExoPlayerView(context, if (useTextureView) R.layout.video_item_texture_view else R.layout.video_item)
             view.setupPlayer(config, AmlogicSafeRenderersFactory(context), exoPlayerListener) { player, error ->
                 val shouldRetry = !useTextureView && !failedPositions.contains(model.url)
@@ -99,6 +105,12 @@ class ScreenSlidePagerAdapter(private val context: Context,
 
                 if (shouldRetry) {
                     model.url?.let { failedPositions.add(it) }
+                    surfaceViewFailures++
+                    if (surfaceViewFailures >= MAX_SURFACE_VIEW_FAILURES) {
+                        Timber.w("SurfaceView video failed %d times; using a TextureView for the rest " +
+                                "of this session. HDR and Dolby Vision are lost, but the decoder " +
+                                "churn of retrying every video is worse.", surfaceViewFailures)
+                    }
                     Timber.w("MediaCodec error at position $position, retrying with TextureView")
                     // Release the current player to avoid memory leaks
                     player.release()
@@ -238,6 +250,10 @@ class ScreenSlidePagerAdapter(private val context: Context,
         val surface = page.findViewById<HdrImageSurfaceView>(R.id.hdr_image_surface) ?: return
         val image = page.findViewById<View>(R.id.mBigImage) ?: return
         block(surface, image)
+    }
+
+    private companion object {
+        const val MAX_SURFACE_VIEW_FAILURES = 2
     }
 
     /** EXIF orientations that mean the video is stored rotated: 180, 90 CW and 90 CCW. */
