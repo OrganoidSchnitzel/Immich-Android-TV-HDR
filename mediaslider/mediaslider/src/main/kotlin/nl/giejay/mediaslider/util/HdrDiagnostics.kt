@@ -51,7 +51,7 @@ object HdrDiagnostics {
     var lastVideoDecoder: String? = null
 
     fun recordImage(url: String?, resource: Drawable) {
-        lastImageUrl = url
+        lastImageUrl = redact(url)
         val bitmap = (resource as? BitmapDrawable)?.bitmap
         if (bitmap == null) {
             lastImageBitmap = "${resource.javaClass.simpleName} (not a bitmap)"
@@ -63,11 +63,21 @@ object HdrDiagnostics {
     }
 
     fun recordVideo(url: String?) {
-        lastVideoUrl = url
+        lastVideoUrl = redact(url)
         // The format/decoder of the previous video must not be read as belonging to this one.
         lastVideoFormat = null
         lastVideoDecoder = null
     }
+
+    /**
+     * Video URLs carry the Immich API key as a query parameter (an external player needs it).
+     * This screen exists to be photographed and pasted into bug reports, so the key must never
+     * reach it.
+     */
+    fun redact(url: String?): String? =
+        url?.replace(API_KEY_PARAMETER, "$1<redacted>")
+
+    private val API_KEY_PARAMETER = Regex("((?:^|[?&])apikey=)[^&#]*", RegexOption.IGNORE_CASE)
 
     private fun describeGainmap(bitmap: Bitmap): String {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {

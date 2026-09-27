@@ -453,7 +453,12 @@ class MediaSliderController(
 
     fun stopPlayer() {
         currentPlayer?.let {
-            if (it.isPlaying || it.isLoading) it.stop()
+            // Stop whenever the player holds anything, not only while it is playing. A video that
+            // played to the end sits in STATE_ENDED (and a paused one in STATE_READY) with neither
+            // isPlaying nor isLoading set, but with its decoder still allocated - and its page stays
+            // alive next to the current one. On a box whose Dolby Vision decoder only exists once,
+            // the next Dolby Vision video then cannot get a decoder at all.
+            if (it.playbackState != Player.STATE_IDLE) it.stop()
         }
         clearKeepScreenOnFlags()
         stopProgressUpdates()

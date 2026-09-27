@@ -40,12 +40,17 @@ class HdrGainmapTransformation(
     private val screenWidth: Int
     private val screenHeight: Int
 
-    private val id = "$ID_PREFIX$transformation"
+    // Everything that changes the output belongs in the cache key. Leaving the cut-offs and the
+    // screen size out meant a changed "max cut-off" setting kept serving crops made under the old
+    // values, from Glide's memory and disk caches alike.
+    private val id: String
 
     init {
         val metrics: DisplayMetrics = context.resources.displayMetrics
         screenWidth = metrics.widthPixels
         screenHeight = metrics.heightPixels
+        id = "$ID_PREFIX$transformation.${config.maxCutOffWidth}x${config.maxCutOffHeight}" +
+            ".${screenWidth}x$screenHeight"
     }
 
     override fun transform(pool: BitmapPool, toTransform: Bitmap, outWidth: Int, outHeight: Int): Bitmap {
@@ -101,7 +106,7 @@ class HdrGainmapTransformation(
     }
 
     override fun equals(other: Any?): Boolean {
-        return other is HdrGainmapTransformation && other.transformation == transformation
+        return other is HdrGainmapTransformation && other.id == id
     }
 
     override fun hashCode(): Int {

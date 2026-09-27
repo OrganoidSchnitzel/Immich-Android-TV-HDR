@@ -10,6 +10,7 @@ import nl.giejay.android.tv.immich.shared.prefs.SLIDER_MAX_CUT_OFF_HEIGHT
 import nl.giejay.android.tv.immich.shared.prefs.SLIDER_MAX_CUT_OFF_WIDTH
 import nl.giejay.android.tv.immich.shared.prefs.SLIDER_ONLY_USE_THUMBNAILS
 import nl.giejay.mediaslider.hdr.EglHdrCapabilities
+import nl.giejay.mediaslider.hdr.HdrEncoderProbe
 import nl.giejay.mediaslider.transformations.GlideTransformations
 import nl.giejay.mediaslider.hdr.HdrSurfaceStatus
 import nl.giejay.mediaslider.util.HdrDiagnostics
@@ -33,7 +34,10 @@ object HdrReport {
             "GPU" to EglHdrCapabilities.probe().let { egl ->
                 listOf(
                     "Can produce an HDR layer" to egl.describe(),
-                    "HDR-related extensions" to egl.hdrExtensions()
+                    "HDR-related extensions" to egl.hdrExtensions(),
+                    // Whether an HDR photo could go through the video plane instead - see
+                    // HdrEncoderProbe for why that is the path most likely to work on a TV box.
+                    "10-bit video encoders" to HdrEncoderProbe.describe()
                 )
             },
             "SETTINGS" to listOf(

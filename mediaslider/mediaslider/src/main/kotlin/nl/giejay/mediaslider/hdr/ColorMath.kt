@@ -7,9 +7,9 @@ import androidx.annotation.RequiresApi
 /**
  * Colour conversions the HDR shader needs as uniforms.
  *
- * Android exposes every [ColorSpace.Rgb] with its transform to CIE XYZ under the same (D50)
- * connection whitepoint, so converting between two of them is just a matrix product - no separate
- * chromatic adaptation step is needed here.
+ * [ColorSpace.Rgb.getTransform] maps RGB to XYZ under the colour space's *own* white point, so two
+ * of them only compose into a single matrix once they share one. sRGB and Display P3 already share
+ * BT.2020's D65, but anything else (a D50 space, say) has to be chromatically adapted first.
  */
 @RequiresApi(Build.VERSION_CODES.O)
 object ColorMath {
@@ -31,7 +31,9 @@ object ColorMath {
     /** Column-major 3x3 converting linear [source] RGB into linear BT.2020 RGB. */
     fun toBt2020Matrix(source: ColorSpace.Rgb): FloatArray {
         val bt2020 = ColorSpace.get(ColorSpace.Named.BT2020) as ColorSpace.Rgb
-        return multiplyColumnMajor(bt2020.inverseTransform, source.transform)
+        // Bradford-adapt the source onto BT.2020's white point; a no-op for D65 spaces.
+        val adapted = ColorSpace.adapt(source, bt2020.whitePoint) as ColorSpace.Rgb
+        return multiplyColumnMajor(bt2020.inverseTransform, adapted.transform)
     }
 
     /**

@@ -281,6 +281,12 @@ open class MediaSliderView(context: Context) : ConstraintLayout(context) {
         ioScope.cancel()
         viewPlugins.forEach { it.plugin.onDestroy(viewPluginContext, it.state) }
         controller.onDestroy()
+        // The controller only knows the current page's player. The pages either side of it have
+        // players too, and the ViewPager does not call destroyItem when the whole view goes away,
+        // so without this they outlive the slider - with their decoders, if they had played.
+        for (index in 0 until mPager.childCount) {
+            (mPager.getChildAt(index) as? ExoPlayerView)?.releasePlayer()
+        }
     }
 
     fun setDefaultExoFactory(defaultExoFactory: DefaultHttpDataSource.Factory) {

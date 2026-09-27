@@ -10,6 +10,7 @@ import android.opengl.EGL14
 import android.opengl.EGLConfig
 import android.opengl.EGLContext
 import android.opengl.EGLDisplay
+import android.opengl.EGLExt
 import android.opengl.EGLSurface
 import android.opengl.GLES30
 import android.os.Build
@@ -94,7 +95,7 @@ class HdrImageSurfaceView @JvmOverloads constructor(
         // Labelling the layer as well costs one transaction and covers the case where the
         // compositor looks at the layer rather than at the buffers.
         val control = surfaceControl
-        control?.let(::tagLayerAsPq)
+        control?.let { tagLayer(it, layerDataSpace(tagging)) }
         handler?.post { createSession(holder, tagging, control) }
     }
 
@@ -124,12 +125,12 @@ class HdrImageSurfaceView @JvmOverloads constructor(
     }
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-    private fun tagLayerAsPq(control: SurfaceControl) {
+    private fun tagLayer(control: SurfaceControl, dataSpace: Int) {
         if (!control.isValid) {
             Timber.w("No valid SurfaceControl to tag as HDR")
             return
         }
-        SurfaceControl.Transaction().use { it.setDataSpace(control, BT2020_PQ).apply() }
+        SurfaceControl.Transaction().use { it.setDataSpace(control, dataSpace).apply() }
     }
 
     // --- GL thread ---
@@ -195,28 +196,39 @@ class HdrImageSurfaceView @JvmOverloads constructor(
         private var targetHeight = 0
 
         fun render(bitmap: Bitmap, width: Int, height: Int, weight: Float) {
-            if (windowSurface != null) {
+            val drawn = if (windowSurface != null) {
                 renderToWindow(bitmap, width, height, weight)
             } else {
                 renderThroughWriter(bitmap, width, height, weight)
             }
-            HdrSurfaceStatus.recordRender(tagging.name)
-        }
-
-        private fun renderToWindow(bitmap: Bitmap, width: Int, height: Int, weight: Float) {
-            makeCurrent(windowSurface!!)
-            if (!upload(bitmap)) return
-            renderer.draw(bitmap, width, height, weight, usePq = tagging != HdrTagging.EGL_HLG)
-            EGL14.eglSwapBuffers(display, windowSurface)
-            layerToTag?.takeIf { it.isValid }?.let { control ->
-                SurfaceControl.Transaction().use { it.setDataSpace(control, BT2020_PQ).apply() }
+            if (drawn) {
+                HdrSurfaceStatus.recordRender(tagging.name)
             }
         }
 
-        private fun renderThroughWriter(bitmap: Bitmap, width: Int, height: Int, weight: Float) {
+        private fun renderToWindow(bitmap: Bitmap, width: Int, height: Int, weight: Float): Boolean {
+            makeCurrent(windowSurface!!)
+            if (!upload(bitmap)) return false
+            renderer.draw(bitmap, width, height, weight, usePq = tagging != HdrTagging.EGL_HLG)
+            EGL14.eglSwapBuffers(display, windowSurface)
+            retagLayer()
+            return true
+        }
+
+        /**
+         * Again after the frame: the buffer that just went through the BufferQueue carries its own
+         * data space, which can replace the layer's.
+         */
+        private fun retagLayer() {
+            layerToTag?.takeIf { it.isValid }?.let { control ->
+                SurfaceControl.Transaction().use { it.setDataSpace(control, layerDataSpace(tagging)).apply() }
+            }
+        }
+
+        private fun renderThroughWriter(bitmap: Bitmap, width: Int, height: Int, weight: Float): Boolean {
             prepareTarget(width, height)
             makeCurrent(offscreen!!)
-            if (!upload(bitmap)) return
+            if (!upload(bitmap)) return false
             renderer.draw(bitmap, width, height, weight, usePq = true)
 
             val pixels = readback!!
@@ -244,9 +256,8 @@ class HdrImageSurfaceView @JvmOverloads constructor(
                 image.close()
                 throw e
             }
-            layerToTag?.takeIf { it.isValid }?.let { control ->
-                SurfaceControl.Transaction().use { it.setDataSpace(control, BT2020_PQ_LIMITED).apply() }
-            }
+            retagLayer()
+            return true
         }
 
         private fun Image.Plane.toConverterPlane() =
@@ -266,10 +277,6 @@ class HdrImageSurfaceView @JvmOverloads constructor(
             }
             readback = ByteBuffer.allocateDirect(width * height * BYTES_PER_PIXEL)
                 .order(ByteOrder.nativeOrder())
-            // Deliberately the format-less factory: it takes the surface's own format, which the
-            // view already set to RGBA_1010102. Naming the format instead throws, because
-            // (RGBA_1010102, BT.2020 PQ) has no public ImageFormat to be mapped onto. The data
-            // space is set per image below, which is what reaches the buffer.
             // P010, not RGBA_1010102: ImageWriter cannot hand out 10-bit RGB images at all,
             // because the platform's plane-count table has no entry for that format and throws
             // before a frame exists. P010 is the one 10-bit format it knows - and it is what a
@@ -420,8 +427,10 @@ class HdrImageSurfaceView @JvmOverloads constructor(
                 } else {
                     EGL14.EGL_WINDOW_BIT or EGL14.EGL_PBUFFER_BIT
                 }
+                // ES 3 bit, because the context asks for ES 3; drivers are allowed to refuse an
+                // ES 3 context on a config that only advertises ES 2.
                 val attributes = intArrayOf(
-                    EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
+                    EGL14.EGL_RENDERABLE_TYPE, EGLExt.EGL_OPENGL_ES3_BIT_KHR,
                     EGL14.EGL_SURFACE_TYPE, surfaceTypes,
                     EGL14.EGL_RED_SIZE, 10,
                     EGL14.EGL_GREEN_SIZE, 10,
@@ -429,12 +438,20 @@ class HdrImageSurfaceView @JvmOverloads constructor(
                     EGL14.EGL_ALPHA_SIZE, 2,
                     EGL14.EGL_NONE
                 )
-                val configs = arrayOfNulls<EGLConfig>(1)
+                val configs = arrayOfNulls<EGLConfig>(MAX_CONFIGS)
                 val count = IntArray(1)
-                check(EGL14.eglChooseConfig(display, attributes, 0, configs, 0, 1, count, 0) && count[0] > 0) {
+                check(EGL14.eglChooseConfig(display, attributes, 0, configs, 0, MAX_CONFIGS, count, 0) && count[0] > 0) {
                     "This device has no 10-bit (RGBA_1010102) EGL config"
                 }
-                return configs[0]!!
+                // eglChooseConfig treats sizes as minimums and ranks deeper configs first, so pick
+                // the one that is exactly 10:10:10:2 - the layout the read-back assumes.
+                return configs.take(count[0]).filterNotNull().firstOrNull { config ->
+                    listOf(EGL14.EGL_RED_SIZE to 10, EGL14.EGL_GREEN_SIZE to 10,
+                        EGL14.EGL_BLUE_SIZE to 10, EGL14.EGL_ALPHA_SIZE to 2).all { (attribute, bits) ->
+                        val value = IntArray(1)
+                        EGL14.eglGetConfigAttrib(display, config, attribute, value, 0) && value[0] == bits
+                    }
+                } ?: error("This device has no exactly 10:10:10:2 EGL config")
             }
         }
     }
@@ -465,6 +482,7 @@ class HdrImageSurfaceView @JvmOverloads constructor(
         const val RELEASE_TIMEOUT_SECONDS = 2L
         const val BYTES_PER_PIXEL = 4
         const val MAX_IMAGES = 2
+        const val MAX_CONFIGS = 16
 
         /** Full range, for the RGB surfaces EGL produces. */
         @RequiresApi(Build.VERSION_CODES.TIRAMISU)
@@ -477,5 +495,22 @@ class HdrImageSurfaceView @JvmOverloads constructor(
         val BT2020_PQ_LIMITED: Int = DataSpace.pack(
             DataSpace.STANDARD_BT2020, DataSpace.TRANSFER_ST2084, DataSpace.RANGE_LIMITED
         )
+
+        @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+        val BT2020_HLG: Int = DataSpace.pack(
+            DataSpace.STANDARD_BT2020, DataSpace.TRANSFER_HLG, DataSpace.RANGE_FULL
+        )
+
+        /**
+         * The data space the layer is labelled with has to match what the mechanism actually
+         * produces: labelling HLG frames as PQ, or limited-range P010 as full range, is a
+         * contradiction for the compositor to resolve.
+         */
+        @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+        fun layerDataSpace(tagging: HdrTagging): Int = when (tagging) {
+            HdrTagging.EGL_HLG -> BT2020_HLG
+            HdrTagging.PRODUCER_PQ -> BT2020_PQ_LIMITED
+            else -> BT2020_PQ
+        }
     }
 }
