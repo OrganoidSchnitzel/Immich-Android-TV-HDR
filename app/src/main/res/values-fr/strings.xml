@@ -314,4 +314,6 @@
     <string name="hdr_diagnostics_desc">Ce que cet appareil et cet écran déclarent à propos du HDR, et ce que le diaporama a vu en dernier</string>
     <string name="hdr_layer_method">Méthode du calque HDR</string>
     <string name="hdr_layer_method_desc">Comment le calque HDR indique au téléviseur qu\'il contient du HDR. Laissez sur Auto sauf si les photos HDR s\'affichent mal ; la méthode qu\'un téléviseur accepte ne se découvre qu\'en essayant.</string>
+    <string name="portrait_video_hdr">Vidéos verticales en HDR</string>
+    <string name="portrait_video_hdr_desc">Lire les vidéos verticales en HDR et Dolby Vision. Désactivez si elles s\'affichent de côté sur votre téléviseur ; elles seront alors lues en SDR.</string>
 </resources>

@@ -314,4 +314,6 @@
     <string name="favorite_remove_failed">Failed to remove from favorites</string>
     <string name="hdr_layer_method">HDR layer method</string>
     <string name="hdr_layer_method_desc">How the HDR photo layer tells the TV it holds HDR. Leave on Auto unless HDR photos look wrong; which mechanism a TV acts on has to be found by trying.</string>
+    <string name="portrait_video_hdr">Portrait videos in HDR</string>
+    <string name="portrait_video_hdr_desc">Play portrait (upright-filmed) videos with HDR and Dolby Vision. Turn off if they appear sideways on your TV; they then play in SDR.</string>
 </resources>

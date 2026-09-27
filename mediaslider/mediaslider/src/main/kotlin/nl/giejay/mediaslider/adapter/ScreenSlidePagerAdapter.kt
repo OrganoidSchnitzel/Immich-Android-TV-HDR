@@ -82,12 +82,14 @@ class ScreenSlidePagerAdapter(private val context: Context,
             }
         } else if (model.type == SliderItemType.VIDEO) {
             // A TextureView is composited by the GPU and is therefore always SDR: a video on one
-            // can never drive the display into HDR or Dolby Vision. Keep it for the cases that
-            // need it - a video stored rotated, and a url that already failed on a SurfaceView -
-            // and put everything else on the SurfaceView. An orientation the server did not report
-            // now counts as "not rotated": treating it as portrait sent every video without
-            // rotation metadata down the SDR path.
-            val useTextureView = isRotated(model.mainItem.orientation) || failedPositions.contains(model.url)
+            // can never drive the display into HDR or Dolby Vision. So every video goes on the
+            // SurfaceView, portrait ones included: media3 hands the rotation to the decoder
+            // ("rotation-degrees") and swaps the reported width and height to match, so a
+            // SurfaceView shows them upright. Rotated videos only fall back to a TextureView when
+            // the user turned that off (for a device that shows them sideways), and any video that
+            // already failed on a SurfaceView retries on one.
+            val rotatedToTexture = isRotated(model.mainItem.orientation) && !config.rotatedVideosOnSurfaceView
+            val useTextureView = rotatedToTexture || failedPositions.contains(model.url)
             view = ExoPlayerView(context, if (useTextureView) R.layout.video_item_texture_view else R.layout.video_item)
             view.setupPlayer(config, AmlogicSafeRenderersFactory(context), exoPlayerListener) { player, error ->
                 val shouldRetry = !useTextureView && !failedPositions.contains(model.url)

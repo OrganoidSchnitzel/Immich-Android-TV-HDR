@@ -21,6 +21,7 @@ import nl.giejay.android.tv.immich.shared.prefs.PreferenceManager
 import nl.giejay.android.tv.immich.shared.prefs.HDR_LAYER_METHOD
 import nl.giejay.android.tv.immich.shared.prefs.SLIDER_HDR_IMAGE_MODE
 import nl.giejay.android.tv.immich.shared.prefs.SLIDER_HDR_PHOTO_BRIGHTNESS
+import nl.giejay.android.tv.immich.shared.prefs.SLIDER_PORTRAIT_VIDEO_HDR
 import nl.giejay.android.tv.immich.shared.util.HdrColorModeController
 import nl.giejay.android.tv.immich.shared.util.HdrImagePlan
 import nl.giejay.mediaslider.config.MediaSliderConfiguration
@@ -135,6 +136,7 @@ class ScreenSaverPreviewFragment : MediaSliderFragment(), ScreenSaverAssetLoader
         configuration.hdrPhotoSurface = hdrPlan.useHdrSurface
         configuration.hdrPhotoWeight = PreferenceManager.get(SLIDER_HDR_PHOTO_BRIGHTNESS) / 100f
         configuration.hdrLayerMethod = PreferenceManager.get(HDR_LAYER_METHOD).tagging
+        configuration.rotatedVideosOnSurfaceView = PreferenceManager.get(SLIDER_PORTRAIT_VIDEO_HDR)
         configuration.onVideoShown = { hdrColorMode.reset() }
         slider.loadMediaSliderView(configuration)
         slider.toggleSlideshow(false)

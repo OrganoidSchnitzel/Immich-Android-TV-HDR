@@ -256,6 +256,10 @@ data object SLIDER_FORCE_ORIGINAL_VIDEO : BooleanPref(false,
     ImmichApplication.appContext!!.getString(R.string.force_original_video),
     ImmichApplication.appContext!!.getString(R.string.force_original_video_desc))
 
+data object SLIDER_PORTRAIT_VIDEO_HDR : BooleanPref(true,
+    ImmichApplication.appContext!!.getString(R.string.portrait_video_hdr),
+    ImmichApplication.appContext!!.getString(R.string.portrait_video_hdr_desc))
+
 data object SLIDER_DPAD_SEEK_IN_VIDEO : BooleanPref(false,
     ImmichApplication.appContext!!.getString(R.string.dpad_seek_in_video),
     ImmichApplication.appContext!!.getString(R.string.dpad_seek_in_video_desc))
@@ -514,6 +518,7 @@ data object ViewSlideshowDisplayPrefScreen : PrefScreen(ImmichApplication.appCon
         PrefCategory("", listOf(
             SLIDER_ONLY_USE_THUMBNAILS,
             SLIDER_FORCE_ORIGINAL_VIDEO,
+            SLIDER_PORTRAIT_VIDEO_HDR,
             SLIDER_DPAD_SEEK_IN_VIDEO,
             SLIDER_LOAD_EDITED_PHOTO,
             SLIDER_MERGE_PORTRAIT_PHOTOS,

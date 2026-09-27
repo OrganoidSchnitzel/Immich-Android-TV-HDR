@@ -15,6 +15,7 @@ import nl.giejay.android.tv.immich.shared.prefs.PreferenceManager
 import nl.giejay.android.tv.immich.shared.prefs.HDR_LAYER_METHOD
 import nl.giejay.android.tv.immich.shared.prefs.SLIDER_HDR_IMAGE_MODE
 import nl.giejay.android.tv.immich.shared.prefs.SLIDER_HDR_PHOTO_BRIGHTNESS
+import nl.giejay.android.tv.immich.shared.prefs.SLIDER_PORTRAIT_VIDEO_HDR
 import nl.giejay.android.tv.immich.shared.util.HdrColorModeController
 import nl.giejay.android.tv.immich.shared.util.HdrImagePlan
 import nl.giejay.mediaslider.plugin.TimelineStoryProgressPlugin
@@ -71,6 +72,7 @@ class ImmichMediaSlider : MediaSliderFragment() {
         config.hdrPhotoSurface = hdrPlan.useHdrSurface
         config.hdrPhotoWeight = PreferenceManager.get(SLIDER_HDR_PHOTO_BRIGHTNESS) / 100f
         config.hdrLayerMethod = PreferenceManager.get(HDR_LAYER_METHOD).tagging
+        config.rotatedVideosOnSurfaceView = PreferenceManager.get(SLIDER_PORTRAIT_VIDEO_HDR)
         // A video must reclaim the display's native HDR/Dolby Vision path from any image HDR mode.
         config.onVideoShown = { hdrColorMode.reset() }
 

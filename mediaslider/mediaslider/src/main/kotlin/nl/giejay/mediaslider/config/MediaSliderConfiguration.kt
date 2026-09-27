@@ -38,6 +38,11 @@ class MediaSliderConfiguration(
     var hdrPhotoWeight: Float = 1f,
     /** Force one way of marking the HDR photo layer; null picks the best the driver offers. */
     var hdrLayerMethod: EglHdrCapabilities.HdrTagging? = null,
+    /**
+     * Play videos stored rotated (portrait phone videos) on a SurfaceView, like every other video,
+     * so they keep HDR and Dolby Vision. When false they go to a TextureView, which is always SDR.
+     */
+    var rotatedVideosOnSurfaceView: Boolean = true,
     val animationSpeedMillis: Int,
     val maxCutOffHeight: Int,
     val maxCutOffWidth: Int,
